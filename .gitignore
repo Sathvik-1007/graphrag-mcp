@@ -21,3 +21,4 @@ htmlcov/
 .coverage
 *.onnx
 .DS_Store
+docs/superpowers/
