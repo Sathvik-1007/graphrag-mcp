@@ -76,6 +76,26 @@ graphrag-mcp install amp           # Amp
 }
 ```
 
+With customization:
+
+```json
+{
+  "mcpServers": {
+    "graphrag-mcp": {
+      "command": "graphrag-mcp",
+      "args": [
+        "server",
+        "--project-dir", "/path/to/my/project",
+        "--embedding-model", "sentence-transformers/all-mpnet-base-v2",
+        "--use-onnx",
+        "--cache-size", "20000",
+        "--log-level", "INFO"
+      ]
+    }
+  }
+}
+```
+
 If you installed via pip instead of uvx, use:
 
 ```json
@@ -173,7 +193,34 @@ When the agent references an entity by name, graphrag-mcp resolves it through a 
 graphrag-mcp server                          # stdio transport (default)
 graphrag-mcp server --transport sse          # SSE transport
 graphrag-mcp server --db /path/to/graph.db   # custom database path
+graphrag-mcp server --project-dir /my/project  # store memory in <dir>/.graphrag/
+
+# Embedding customization
+graphrag-mcp server --embedding-model sentence-transformers/all-mpnet-base-v2
+graphrag-mcp server --no-onnx --embedding-device cuda
+graphrag-mcp server --cache-size 50000
+
+# Tuning
+graphrag-mcp server --search-limit 20 --max-hops 6
+graphrag-mcp server --log-level DEBUG
 ```
+
+All server options:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--transport` | `stdio`, `sse`, or `streamable-http` | `stdio` |
+| `--db` | Path to SQLite database file | `.graphrag/graph.db` |
+| `--project-dir` | Project root; DB at `<dir>/.graphrag/graph.db` | CWD |
+| `--host` | Bind address (SSE/HTTP only) | `127.0.0.1` |
+| `--port` | Port (SSE/HTTP only) | `8080` |
+| `--embedding-model` | HuggingFace model ID | `all-MiniLM-L6-v2` |
+| `--use-onnx / --no-onnx` | Force ONNX runtime on/off | auto-detect |
+| `--embedding-device` | `cpu` or `cuda` | `cpu` |
+| `--cache-size` | Embedding LRU cache max entries | `10000` |
+| `--search-limit` | Default max results for `search_nodes` | `10` |
+| `--max-hops` | Default max depth for `find_connections` | `4` |
+| `--log-level` | `DEBUG` / `INFO` / `WARNING` / `ERROR` / `CRITICAL` | `WARNING` |
 
 ### Skill Installation
 
@@ -197,7 +244,7 @@ graphrag-mcp validate                        # run integrity checks
 
 ## Configuration
 
-All settings are optional. Defaults work out of the box.
+All settings are optional. Defaults work out of the box. Every setting can be controlled via CLI flags (see `graphrag-mcp server --help`), environment variables, or both. **CLI flags take precedence over environment variables**, which take precedence over defaults.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

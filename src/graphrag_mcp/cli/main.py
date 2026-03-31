@@ -122,18 +122,100 @@ def cli() -> None:
     show_default=True,
     help="Port for SSE / HTTP transports.",
 )
+@click.option(
+    "--embedding-model",
+    "embedding_model",
+    default=None,
+    help="HuggingFace model ID for embeddings (default: all-MiniLM-L6-v2).",
+)
+@click.option(
+    "--use-onnx/--no-onnx",
+    "use_onnx",
+    default=None,
+    help="Force ONNX runtime on/off for embeddings (default: auto-detect).",
+)
+@click.option(
+    "--embedding-device",
+    "embedding_device",
+    default=None,
+    type=click.Choice(["cpu", "cuda"]),
+    help="Device for embedding inference (default: cpu).",
+)
+@click.option(
+    "--cache-size",
+    "cache_size",
+    default=None,
+    type=int,
+    help="Max entries in the embedding LRU cache (default: 10000).",
+)
+@click.option(
+    "--search-limit",
+    "search_limit",
+    default=None,
+    type=int,
+    help="Default max results for search_nodes (default: 10).",
+)
+@click.option(
+    "--max-hops",
+    "max_hops",
+    default=None,
+    type=int,
+    help="Default max traversal depth for find_connections (default: 4).",
+)
+@click.option(
+    "--log-level",
+    "log_level",
+    default=None,
+    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
+    help="Logging verbosity (default: WARNING).",
+)
 def server(
     transport: str,
     db_path: str | None,
     project_dir: str | None,
     host: str,
     port: int,
+    embedding_model: str | None,
+    use_onnx: bool | None,
+    embedding_device: str | None,
+    cache_size: int | None,
+    search_limit: int | None,
+    max_hops: int | None,
+    log_level: str | None,
 ) -> None:
-    """Start the MCP server."""
+    """Start the MCP server.
+
+    All options can also be set via environment variables (GRAPHRAG_*).
+    CLI flags take precedence over environment variables.
+
+    \b
+    Examples:
+      graphrag-mcp server
+      graphrag-mcp server --project-dir /my/project
+      graphrag-mcp server --embedding-model sentence-transformers/all-mpnet-base-v2
+      graphrag-mcp server --no-onnx --embedding-device cuda --log-level DEBUG
+    """
     try:
         # Propagate CLI options into environment so that Config picks them up.
+        # Only set env vars for options that were explicitly provided — this
+        # preserves the precedence: CLI flag > env var > Config default.
         os.environ["GRAPHRAG_TRANSPORT"] = transport
         _resolve_db_path(db_path, project_dir)
+
+        if embedding_model is not None:
+            os.environ["GRAPHRAG_EMBEDDING_MODEL"] = embedding_model
+        if use_onnx is not None:
+            os.environ["GRAPHRAG_USE_ONNX"] = "1" if use_onnx else "0"
+        if embedding_device is not None:
+            os.environ["GRAPHRAG_EMBEDDING_DEVICE"] = embedding_device
+        if cache_size is not None:
+            os.environ["GRAPHRAG_CACHE_SIZE"] = str(cache_size)
+        if search_limit is not None:
+            os.environ["GRAPHRAG_SEARCH_LIMIT"] = str(search_limit)
+        if max_hops is not None:
+            os.environ["GRAPHRAG_MAX_HOPS"] = str(max_hops)
+        if log_level is not None:
+            os.environ["GRAPHRAG_LOG_LEVEL"] = log_level.upper()
 
         from graphrag_mcp.server import run  # lazy import — heavy deps
 
