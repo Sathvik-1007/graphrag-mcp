@@ -7,6 +7,9 @@ Priorities:
 
 The model is loaded lazily on first use, not at import time. Embeddings
 are cached by content hash (SHA-256) in the database to avoid recomputation.
+
+The engine is **storage-agnostic**: it delegates all persistence to a
+:class:`StorageBackend` instance.
 """
 
 from __future__ import annotations
@@ -24,7 +27,7 @@ from graphrag_mcp.utils.errors import DimensionMismatchError, EmbeddingError, Mo
 from graphrag_mcp.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from graphrag_mcp.db.connection import Database
+    from graphrag_mcp.storage.base import StorageBackend
 
 
 class EmbeddingModel(Protocol):
@@ -61,8 +64,8 @@ class EmbeddingEngine:
 
     Usage::
         engine = EmbeddingEngine(model_name="all-MiniLM-L6-v2", use_onnx=True, device="cpu")
-        await engine.initialize(db)  # loads model, checks dimension
-        vectors = await engine.embed(["hello world", "test"], db)
+        await engine.initialize(storage)  # loads model, checks dimension
+        vectors = await engine.embed(["hello world", "test"])
     """
 
     def __init__(
@@ -79,20 +82,20 @@ class EmbeddingEngine:
         self._model: EmbeddingModel | None = None
         self._dimension: int | None = None
         self._available = False
-        self._db: Database | None = None
+        self._storage: StorageBackend | None = None
 
-    def set_db(self, db: Database) -> None:
-        """Store a database reference for use as default in subsequent calls."""
-        self._db = db
+    def set_storage(self, storage: StorageBackend) -> None:
+        """Store a storage backend reference for use in subsequent calls."""
+        self._storage = storage
 
-    def _resolve_db(self, db: Database | None) -> Database:
-        """Return the explicitly passed db, or fall back to self._db."""
-        if db is not None:
-            return db
-        if self._db is not None:
-            return self._db
+    def _resolve_storage(self, storage: StorageBackend | None = None) -> StorageBackend:
+        """Return the explicitly passed storage, or fall back to self._storage."""
+        if storage is not None:
+            return storage
+        if self._storage is not None:
+            return self._storage
         raise EmbeddingError(
-            "No database available. Pass db explicitly or call set_db()/initialize() first."
+            "No storage available. Pass storage explicitly or call set_storage()/initialize() first."
         )
 
     @property
@@ -164,65 +167,41 @@ class EmbeddingEngine:
         log.info("Detected embedding dimension: %d", dim)
         return dim
 
-    async def initialize(self, db: Database | None = None) -> None:
-        """Load model, detect dimension, validate against DB metadata.
+    async def initialize(self, storage: StorageBackend | None = None) -> None:
+        """Load model, detect dimension, validate against stored metadata.
 
-        If the database has no dimension stored, stores the detected one.
+        If the storage has no dimension stored, stores the detected one.
         If it has a different dimension, raises DimensionMismatchError.
         """
-        db = self._resolve_db(db)
+        storage = self._resolve_storage(storage)
         try:
             self._load_model()
             self._dimension = self._detect_dimension()
 
             # Check stored dimension
-            row = await db.fetch_one("SELECT value FROM metadata WHERE key = 'embedding_dimension'")
-            if row:
-                stored_dim = int(row["value"])
+            stored_dim_str = await storage.get_metadata("embedding_dimension")
+            if stored_dim_str:
+                stored_dim = int(stored_dim_str)
                 if stored_dim != self._dimension:
                     raise DimensionMismatchError(stored_dim, self._dimension)
             else:
-                await db.execute(
-                    "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
-                    ("embedding_dimension", str(self._dimension)),
-                )
-                await db.execute(
-                    "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
-                    ("embedding_model", self._model_name),
-                )
+                await storage.set_metadata("embedding_dimension", str(self._dimension))
+                await storage.set_metadata("embedding_model", self._model_name)
 
             # Create vector tables if they don't exist
-            await self._ensure_vec_tables(db)
+            await storage.ensure_vec_tables(self._dimension)
 
             self._available = True
-            self._db = db
+            self._storage = storage
         except (ModelLoadError, DimensionMismatchError):
             raise
         except (OSError, RuntimeError, sqlite3.Error, ValueError) as exc:
             log.warning("Embedding initialization failed: %s. Semantic search disabled.", exc)
             self._available = False
 
-    async def _ensure_vec_tables(self, db: Database) -> None:
-        """Create sqlite-vec virtual tables if they don't exist."""
-        dim = self._dimension
-        try:
-            await db.execute(f"""
-                CREATE VIRTUAL TABLE IF NOT EXISTS entity_embeddings USING vec0(
-                    id TEXT PRIMARY KEY,
-                    embedding float[{dim}]
-                )
-            """)
-            await db.execute(f"""
-                CREATE VIRTUAL TABLE IF NOT EXISTS observation_embeddings USING vec0(
-                    id TEXT PRIMARY KEY,
-                    embedding float[{dim}]
-                )
-            """)
-        except (sqlite3.Error, OSError) as exc:
-            log.warning("Could not create vector tables: %s", exc)
-            self._available = False
-
-    async def embed(self, texts: list[str], db: Database | None = None) -> list[list[float] | None]:
+    async def embed(
+        self, texts: list[str], storage: StorageBackend | None = None
+    ) -> list[list[float] | None]:
         """Compute embeddings with caching.
 
         Checks the embedding_cache table first. Only computes embeddings
@@ -230,7 +209,7 @@ class EmbeddingEngine:
 
         Args:
             texts: Strings to embed.
-            db: Database for cache access. Falls back to ``self._db`` if not provided.
+            storage: Storage backend for cache access. Falls back to ``self._storage``.
 
         Returns:
             List of embedding vectors (same order as texts).
@@ -239,7 +218,7 @@ class EmbeddingEngine:
         if not self._available:
             raise EmbeddingError("Embedding engine not available.")
 
-        db = self._resolve_db(db)
+        storage = self._resolve_storage(storage)
 
         results: list[list[float] | None] = [None] * len(texts)
         uncached_indices: list[int] = []
@@ -248,12 +227,9 @@ class EmbeddingEngine:
         # Check cache
         for i, text in enumerate(texts):
             h = _content_hash(text)
-            row = await db.fetch_one(
-                "SELECT embedding FROM embedding_cache WHERE content_hash = ? AND model_name = ?",
-                (h, self._model_name),
-            )
-            if row:
-                results[i] = _bytes_to_embedding(row["embedding"])
+            cached = await storage.get_cached_embedding(h, self._model_name)
+            if cached:
+                results[i] = _bytes_to_embedding(cached)
             else:
                 uncached_indices.append(i)
                 uncached_texts.append(text)
@@ -278,21 +254,10 @@ class EmbeddingEngine:
                 # Cache
                 h = _content_hash(text)
                 blob = _embedding_to_bytes(vec)
-                await db.execute(
-                    "INSERT OR REPLACE INTO embedding_cache (content_hash, embedding, model_name, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (h, blob, self._model_name, now),
-                )
+                await storage.set_cached_embedding(h, blob, self._model_name, now)
 
             # Prune cache if over limit
-            count_row = await db.fetch_one("SELECT COUNT(*) AS c FROM embedding_cache")
-            if count_row and int(count_row["c"]) > self._cache_size:
-                excess = int(count_row["c"]) - self._cache_size
-                await db.execute(
-                    "DELETE FROM embedding_cache WHERE content_hash IN "
-                    "(SELECT content_hash FROM embedding_cache ORDER BY created_at ASC LIMIT ?)",
-                    (excess,),
-                )
+            await storage.prune_embedding_cache(self._cache_size)
 
         # Post-condition: all entries must be non-None after successful computation
         for i, entry in enumerate(results):
@@ -302,29 +267,27 @@ class EmbeddingEngine:
         return results
 
     async def upsert_entity_embedding(
-        self, entity_id: str, embedding: list[float], db: Database | None = None
+        self, entity_id: str, embedding: list[float], storage: StorageBackend | None = None
     ) -> None:
-        db = self._resolve_db(db)
+        storage = self._resolve_storage(storage)
         blob = _embedding_to_bytes(embedding)
-        await db.execute(
-            "INSERT OR REPLACE INTO entity_embeddings (id, embedding) VALUES (?, ?)",
-            (entity_id, blob),
-        )
+        await storage.upsert_entity_embedding(entity_id, blob)
 
     async def upsert_observation_embedding(
-        self, obs_id: str, embedding: list[float], db: Database | None = None
+        self, obs_id: str, embedding: list[float], storage: StorageBackend | None = None
     ) -> None:
-        db = self._resolve_db(db)
+        storage = self._resolve_storage(storage)
         blob = _embedding_to_bytes(embedding)
-        await db.execute(
-            "INSERT OR REPLACE INTO observation_embeddings (id, embedding) VALUES (?, ?)",
-            (obs_id, blob),
-        )
+        await storage.upsert_observation_embedding(obs_id, blob)
 
-    async def delete_entity_embedding(self, entity_id: str, db: Database | None = None) -> None:
-        db = self._resolve_db(db)
-        await db.execute("DELETE FROM entity_embeddings WHERE id = ?", (entity_id,))
+    async def delete_entity_embedding(
+        self, entity_id: str, storage: StorageBackend | None = None
+    ) -> None:
+        storage = self._resolve_storage(storage)
+        await storage.delete_entity_embedding(entity_id)
 
-    async def delete_observation_embedding(self, obs_id: str, db: Database | None = None) -> None:
-        db = self._resolve_db(db)
-        await db.execute("DELETE FROM observation_embeddings WHERE id = ?", (obs_id,))
+    async def delete_observation_embedding(
+        self, obs_id: str, storage: StorageBackend | None = None
+    ) -> None:
+        storage = self._resolve_storage(storage)
+        await storage.delete_observation_embedding(obs_id)

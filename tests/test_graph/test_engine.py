@@ -10,12 +10,11 @@ import pytest
 import pytest_asyncio
 from pathlib import Path
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import run_migrations
 from graphrag_mcp.graph.engine import GraphEngine
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
 from graphrag_mcp.models.relationship import Relationship
+from graphrag_mcp.storage import SQLiteBackend
 from graphrag_mcp.utils.errors import EntityNotFoundError
 
 
@@ -23,17 +22,16 @@ from graphrag_mcp.utils.errors import EntityNotFoundError
 
 
 @pytest_asyncio.fixture
-async def db(tmp_path: Path) -> Database:
-    """Create a fresh temp database with migrations applied."""
-    db = Database(tmp_path / "test.db")
-    await db.initialize()
-    await run_migrations(db)
-    yield db
-    await db.close()
+async def db(tmp_path: Path) -> SQLiteBackend:
+    """Create a fresh temp storage backend with migrations applied."""
+    storage = SQLiteBackend(tmp_path / "test.db")
+    await storage.initialize()
+    yield storage
+    await storage.close()
 
 
 @pytest_asyncio.fixture
-async def engine(db: Database) -> GraphEngine:
+async def engine(db: SQLiteBackend) -> GraphEngine:
     return GraphEngine(db)
 
 

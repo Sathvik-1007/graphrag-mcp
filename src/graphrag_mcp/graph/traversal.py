@@ -2,17 +2,24 @@
 
 Provides efficient traversal using SQLite recursive CTEs with cycle
 detection via json_array. All operations are read-only and async.
+
+The traversal layer accepts a :class:`StorageBackend` and uses its
+``fetch_all`` escape hatch for complex recursive queries. Graph-database
+backends (Neo4j, Memgraph) will override ``fetch_all`` with their
+native traversal queries (Cypher, GQL).
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from graphrag_mcp.db.connection import Database
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.relationship import Relationship
 from graphrag_mcp.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from graphrag_mcp.storage.base import StorageBackend
 
 log = get_logger("graph.traversal")
 
@@ -45,8 +52,8 @@ class GraphTraversal:
     All methods are async and read-only.
     """
 
-    def __init__(self, db: Database) -> None:
-        self._db = db
+    def __init__(self, storage: StorageBackend) -> None:
+        self._storage = storage
 
     # ── Connection discovery ─────────────────────────────────────────────
 
@@ -139,7 +146,7 @@ class GraphTraversal:
             ordered_params.append(max_hops)
             params = ordered_params
 
-        rows = await self._db.fetch_all(sql, tuple(params))
+        rows = await self._storage.fetch_all(sql, tuple(params))
 
         # Deduplicate by entity_id — keep the shallowest depth
         seen: dict[str, dict[str, Any]] = {}
@@ -226,7 +233,9 @@ class GraphTraversal:
         LIMIT 10
         """
 
-        rows = await self._db.fetch_all(sql, (source_id, source_id, source_id, max_hops, target_id))
+        rows = await self._storage.fetch_all(
+            sql, (source_id, source_id, source_id, max_hops, target_id)
+        )
 
         if not rows:
             return []
@@ -242,7 +251,7 @@ class GraphTraversal:
                 all_entity_ids.add(str(step["entity_id"]))
 
         # Batch-resolve entity names
-        name_map = await self._resolve_entity_names(all_entity_ids)
+        name_map = await self._storage.resolve_entity_names(all_entity_ids)
 
         results: list[dict[str, Any]] = []
         for path in parsed_paths:
@@ -316,7 +325,7 @@ class GraphTraversal:
             )
             SELECT DISTINCT entity_id FROM traverse
             """
-            rows = await self._db.fetch_all(sql, (seed_id, seed_id, radius))
+            rows = await self._storage.fetch_all(sql, (seed_id, seed_id, radius))
             for row in rows:
                 all_entity_ids.add(str(row["entity_id"]))
 
@@ -324,21 +333,11 @@ class GraphTraversal:
             return {"entities": [], "relationships": []}
 
         # Fetch all entities in the subgraph
-        placeholders = ", ".join("?" for _ in all_entity_ids)
-        id_list = tuple(all_entity_ids)
-
-        entity_rows = await self._db.fetch_all(
-            f"SELECT * FROM entities WHERE id IN ({placeholders})",  # noqa: S608
-            id_list,
-        )
+        entity_rows = await self._storage.fetch_entity_rows(list(all_entity_ids))
         entities = [Entity.from_row(r).to_dict() for r in entity_rows]
 
         # Fetch all relationships between entities in the subgraph
-        rel_rows = await self._db.fetch_all(
-            f"SELECT * FROM relationships "  # noqa: S608
-            f"WHERE source_id IN ({placeholders}) AND target_id IN ({placeholders})",
-            id_list + id_list,
-        )
+        rel_rows = await self._storage.fetch_relationships_between(list(all_entity_ids))
         relationships = [Relationship.from_row(r).to_dict() for r in rel_rows]
 
         log.debug(
@@ -358,7 +357,7 @@ class GraphTraversal:
             return path
 
         entity_ids = {str(step["entity_id"]) for step in path if step.get("entity_id")}
-        name_map = await self._resolve_entity_names(entity_ids)
+        name_map = await self._storage.resolve_entity_names(entity_ids)
 
         enriched: list[dict[str, Any]] = []
         for step in path:
@@ -372,18 +371,3 @@ class GraphTraversal:
                 }
             )
         return enriched
-
-    async def _resolve_entity_names(self, entity_ids: set[str]) -> dict[str, str]:
-        """Batch-resolve entity IDs to names.
-
-        Returns a mapping of ``{entity_id: entity_name}``.
-        """
-        if not entity_ids:
-            return {}
-
-        placeholders = ", ".join("?" for _ in entity_ids)
-        rows = await self._db.fetch_all(
-            f"SELECT id, name FROM entities WHERE id IN ({placeholders})",  # noqa: S608
-            tuple(entity_ids),
-        )
-        return {str(r["id"]): str(r["name"]) for r in rows}

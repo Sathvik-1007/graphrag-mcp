@@ -30,23 +30,24 @@ def _run_async(coro: Any) -> Any:
 
 
 async def _open_db(db_path: str | None = None) -> tuple[Any, Any]:
-    """Open database and return (Database, GraphEngine) for CLI commands.
+    """Open storage backend and return (StorageBackend, GraphEngine) for CLI commands.
 
     Lazily imports heavy modules so that lightweight commands (like
-    ``--version``) stay fast.
+    ``--version``) stay fast. The returned "db" object is a StorageBackend
+    instance (typically SQLiteBackend) that CLI commands can use for
+    raw queries, and the GraphEngine is wired to the same backend.
     """
-    from graphrag_mcp.db import Database, run_migrations
     from graphrag_mcp.graph import GraphEngine
+    from graphrag_mcp.storage import create_backend
 
     if db_path:
         os.environ["GRAPHRAG_DB_PATH"] = db_path
 
     config = load_config()
-    db = Database(config.ensure_db_dir())
-    await db.initialize()
-    await run_migrations(db)
-    graph = GraphEngine(db)
-    return db, graph
+    storage = create_backend(config.backend_type, db_path=config.ensure_db_dir())
+    await storage.initialize()
+    graph = GraphEngine(storage)
+    return storage, graph
 
 
 def _print_error(message: str) -> None:
@@ -213,12 +214,10 @@ def status(db_path: str | None, as_json: bool) -> None:
     """Show graph statistics."""
 
     async def _status() -> dict[str, Any]:
-        from graphrag_mcp.db import get_current_version
-
         db, graph = await _open_db(db_path)
         try:
             stats = await graph.get_stats()
-            stats["schema_version"] = await get_current_version(db)
+            stats["schema_version"] = await db.get_schema_version()
             return stats
         finally:
             await db.close()
@@ -493,8 +492,6 @@ def validate(db_path: str | None) -> None:
     """Validate database integrity."""
 
     async def _validate() -> list[str]:
-        from graphrag_mcp.db import get_current_version
-
         db, _graph = await _open_db(db_path)
         issues: list[str] = []
         try:
@@ -505,7 +502,7 @@ def validate(db_path: str | None) -> None:
                 issues.append(f"SQLite integrity check failed: {integrity}")
 
             # 2. Schema version
-            version = await get_current_version(db)
+            version = await db.get_schema_version()
             if version == 0:
                 issues.append("No migrations have been applied (schema version 0).")
 

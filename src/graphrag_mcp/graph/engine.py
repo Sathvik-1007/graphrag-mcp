@@ -4,22 +4,27 @@ The GraphEngine is the primary interface for mutating and querying the
 knowledge graph. All writes are transactional, batch operations are
 optimized, and entity resolution uses a cascade strategy:
 exact match -> case-insensitive match -> FTS5 suggestions.
+
+The engine is **storage-agnostic**: it delegates all persistence to a
+:class:`StorageBackend` instance, which can be SQLite, Neo4j, Memgraph,
+or any other registered backend.
 """
 
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
-from typing import Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
-from graphrag_mcp.db.connection import Database
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
 from graphrag_mcp.models.relationship import Relationship
 from graphrag_mcp.utils.errors import EntityNotFoundError
 from graphrag_mcp.utils.ids import generate_id
 from graphrag_mcp.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from graphrag_mcp.storage.base import StorageBackend
 
 log = get_logger("graph.engine")
 
@@ -74,10 +79,14 @@ class GraphEngine:
     All public methods are async. Write operations are wrapped in
     transactions. Batch methods process items in a single transaction
     for performance.
+
+    The engine accepts a :class:`StorageBackend` and delegates all
+    persistence and query operations to it. This makes the engine
+    compatible with any backend (SQLite, Neo4j, Memgraph, etc.).
     """
 
-    def __init__(self, db: Database) -> None:
-        self._db = db
+    def __init__(self, storage: StorageBackend) -> None:
+        self._storage = storage
 
     # ── Entity CRUD ──────────────────────────────────────────────────────
 
@@ -98,58 +107,29 @@ class GraphEngine:
         results: list[EntityResult] = []
         now = time.time()
 
-        async with self._db.transaction():
+        async with self._storage.transaction():
             for entity in entities:
-                existing = await self._db.fetch_one(
-                    "SELECT * FROM entities WHERE name = ? AND entity_type = ?",
-                    (entity.name, entity.entity_type),
+                # Check for existing entity to determine the returned ID
+                existing = await self._storage.get_entity_by_name(entity.name, entity.entity_type)
+
+                status = await self._storage.upsert_entity(
+                    entity_id=entity.id,
+                    name=entity.name,
+                    entity_type=entity.entity_type,
+                    description=entity.description,
+                    properties=entity.properties,
+                    created_at=entity.created_at,
+                    updated_at=now if existing else entity.updated_at,
                 )
 
-                if existing is not None:
-                    # Merge: append description, merge properties
-                    old_desc = str(existing["description"] or "")
-                    new_desc = entity.description.strip()
-                    if new_desc and new_desc not in old_desc:
-                        merged_desc = f"{old_desc}\n{new_desc}".strip()
-                    else:
-                        merged_desc = old_desc
-
-                    old_props_raw = existing.get("properties")
-                    old_props: dict[str, object] = (
-                        json.loads(old_props_raw) if isinstance(old_props_raw, str) else {}
-                    )
-                    merged_props = {**old_props, **entity.properties}
-
-                    await self._db.execute(
-                        "UPDATE entities SET description = ?, properties = ?, updated_at = ? WHERE id = ?",
-                        (
-                            merged_desc,
-                            json.dumps(merged_props, ensure_ascii=False, default=str),
-                            now,
-                            str(existing["id"]),
-                        ),
-                    )
-                    results.append(
-                        EntityResult(id=str(existing["id"]), name=entity.name, status="merged")
-                    )
-                    log.debug("Merged entity %r (type=%s)", entity.name, entity.entity_type)
-                else:
-                    # Create new
-                    await self._db.execute(
-                        "INSERT INTO entities (id, name, entity_type, description, properties, created_at, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            entity.id,
-                            entity.name,
-                            entity.entity_type,
-                            entity.description,
-                            entity.properties_json,
-                            entity.created_at,
-                            entity.updated_at,
-                        ),
-                    )
-                    results.append(EntityResult(id=entity.id, name=entity.name, status="created"))
-                    log.debug("Created entity %r (type=%s)", entity.name, entity.entity_type)
+                result_id = str(existing["id"]) if existing else entity.id
+                results.append(EntityResult(id=result_id, name=entity.name, status=status))
+                log.debug(
+                    "%s entity %r (type=%s)",
+                    "Merged" if status == "merged" else "Created",
+                    entity.name,
+                    entity.entity_type,
+                )
 
         log.info(
             "add_entities: %d processed (%d created, %d merged)",
@@ -180,7 +160,7 @@ class GraphEngine:
         Raises:
             EntityNotFoundError: If no entity has this ID.
         """
-        row = await self._db.fetch_one("SELECT * FROM entities WHERE id = ?", (entity_id,))
+        row = await self._storage.get_entity_by_id(entity_id)
         if row is None:
             raise EntityNotFoundError(entity_id)
         return Entity.from_row(row)
@@ -204,32 +184,23 @@ class GraphEngine:
         entity = await self.resolve_entity(name)
         now = time.time()
 
-        updates: list[str] = []
-        params: list[object] = []
+        updates: dict[str, Any] = {}
 
         if description is not None:
-            updates.append("description = ?")
-            params.append(description)
+            updates["description"] = description
         if properties is not None:
-            # Merge with existing
             merged = {**entity.properties, **properties}
-            updates.append("properties = ?")
-            params.append(json.dumps(merged, ensure_ascii=False, default=str))
+            updates["properties"] = json.dumps(merged, ensure_ascii=False, default=str)
         if entity_type is not None:
-            updates.append("entity_type = ?")
-            params.append(entity_type.strip().lower())
+            updates["entity_type"] = entity_type.strip().lower()
 
         if not updates:
             return entity
 
-        updates.append("updated_at = ?")
-        params.append(now)
-        params.append(entity.id)
+        updates["updated_at"] = now
 
-        sql = f"UPDATE entities SET {', '.join(updates)} WHERE id = ?"  # noqa: S608
-
-        async with self._db.transaction():
-            await self._db.execute(sql, tuple(params))
+        async with self._storage.transaction():
+            await self._storage.update_entity_fields(entity.id, updates)
 
         return await self.get_entity_by_id(entity.id)
 
@@ -243,29 +214,18 @@ class GraphEngine:
             return 0
 
         deleted = 0
-        async with self._db.transaction():
+        async with self._storage.transaction():
             for name in names:
                 # Resolve to get the ID — skip silently if not found
-                row = await self._db.fetch_one("SELECT id FROM entities WHERE name = ?", (name,))
+                row = await self._storage.get_entity_by_name(name)
                 if row is None:
-                    row = await self._db.fetch_one(
-                        "SELECT id FROM entities WHERE name = ? COLLATE NOCASE", (name,)
-                    )
+                    row = await self._storage.get_entity_by_name_nocase(name)
                 if row is None:
                     log.debug("Entity %r not found for deletion, skipping", name)
                     continue
 
                 entity_id = str(row["id"])
-
-                # Delete observations
-                await self._db.execute("DELETE FROM observations WHERE entity_id = ?", (entity_id,))
-                # Delete relationships where this entity is source or target
-                await self._db.execute(
-                    "DELETE FROM relationships WHERE source_id = ? OR target_id = ?",
-                    (entity_id, entity_id),
-                )
-                # Delete the entity itself
-                await self._db.execute("DELETE FROM entities WHERE id = ?", (entity_id,))
+                await self._storage.delete_entity(entity_id)
                 deleted += 1
 
         log.info("delete_entities: %d deleted out of %d requested", deleted, len(names))
@@ -278,16 +238,7 @@ class GraphEngine:
         offset: int = 0,
     ) -> list[Entity]:
         """List entities with optional type filter and pagination."""
-        if entity_type is not None:
-            rows = await self._db.fetch_all(
-                "SELECT * FROM entities WHERE entity_type = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-                (entity_type.strip().lower(), limit, offset),
-            )
-        else:
-            rows = await self._db.fetch_all(
-                "SELECT * FROM entities ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-                (limit, offset),
-            )
+        rows = await self._storage.list_entities(entity_type, limit, offset)
         return [Entity.from_row(row) for row in rows]
 
     # ── Relationship CRUD ────────────────────────────────────────────────
@@ -309,49 +260,26 @@ class GraphEngine:
         results: list[RelationshipResult] = []
         now = time.time()
 
-        async with self._db.transaction():
+        async with self._storage.transaction():
             for rel in relationships:
-                existing = await self._db.fetch_one(
-                    "SELECT * FROM relationships "
-                    "WHERE source_id = ? AND target_id = ? AND relationship_type = ?",
-                    (rel.source_id, rel.target_id, rel.relationship_type),
+                # Check for existing to determine the returned ID
+                existing = await self._storage.get_relationship(
+                    rel.source_id, rel.target_id, rel.relationship_type
                 )
 
-                if existing is not None:
-                    new_weight = max(float(existing["weight"]), rel.weight)
-                    old_props_raw = existing.get("properties")
-                    old_props: dict[str, object] = (
-                        json.loads(old_props_raw) if isinstance(old_props_raw, str) else {}
-                    )
-                    merged_props = {**old_props, **rel.properties}
+                status = await self._storage.upsert_relationship(
+                    rel_id=rel.id,
+                    source_id=rel.source_id,
+                    target_id=rel.target_id,
+                    relationship_type=rel.relationship_type,
+                    weight=rel.weight,
+                    properties=rel.properties,
+                    created_at=rel.created_at,
+                    updated_at=now if existing else rel.updated_at,
+                )
 
-                    await self._db.execute(
-                        "UPDATE relationships SET weight = ?, properties = ?, updated_at = ? WHERE id = ?",
-                        (
-                            new_weight,
-                            json.dumps(merged_props, ensure_ascii=False, default=str),
-                            now,
-                            str(existing["id"]),
-                        ),
-                    )
-                    results.append(RelationshipResult(id=str(existing["id"]), status="updated"))
-                else:
-                    await self._db.execute(
-                        "INSERT INTO relationships "
-                        "(id, source_id, target_id, relationship_type, weight, properties, created_at, updated_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            rel.id,
-                            rel.source_id,
-                            rel.target_id,
-                            rel.relationship_type,
-                            rel.weight,
-                            rel.properties_json,
-                            rel.created_at,
-                            rel.updated_at,
-                        ),
-                    )
-                    results.append(RelationshipResult(id=rel.id, status="created"))
+                result_id = str(existing["id"]) if existing else rel.id
+                results.append(RelationshipResult(id=result_id, status=status))
 
         log.info(
             "add_relationships: %d processed (%d created, %d updated)",
@@ -379,37 +307,9 @@ class GraphEngine:
             ``target_name`` fields attached.
         """
         entity = await self.resolve_entity(entity_name)
-
-        conditions: list[str] = []
-        params: list[object] = []
-
-        if direction == "outgoing":
-            conditions.append("r.source_id = ?")
-            params.append(entity.id)
-        elif direction == "incoming":
-            conditions.append("r.target_id = ?")
-            params.append(entity.id)
-        else:  # both
-            conditions.append("(r.source_id = ? OR r.target_id = ?)")
-            params.extend([entity.id, entity.id])
-
-        if relationship_type is not None:
-            conditions.append("r.relationship_type = ?")
-            params.append(relationship_type.strip().lower())
-
-        where = " AND ".join(conditions)
-        sql = (
-            "SELECT r.*, "
-            "  s.name AS source_name, s.entity_type AS source_type, "
-            "  t.name AS target_name, t.entity_type AS target_type "
-            "FROM relationships r "
-            "JOIN entities s ON s.id = r.source_id "
-            "JOIN entities t ON t.id = r.target_id "
-            f"WHERE {where} "
-            "ORDER BY r.weight DESC, r.updated_at DESC"
+        rows = await self._storage.get_relationships_for_entity(
+            entity.id, direction, relationship_type
         )
-
-        rows = await self._db.fetch_all(sql, tuple(params))
         results: list[dict[str, Any]] = []
         for row in rows:
             rel = Relationship.from_row(row)
@@ -436,16 +336,10 @@ class GraphEngine:
         source_entity = await self.resolve_entity(source)
         target_entity = await self.resolve_entity(target)
 
-        params: list[object] = [source_entity.id, target_entity.id]
-
-        sql = "DELETE FROM relationships WHERE source_id = ? AND target_id = ?"
-        if relationship_type is not None:
-            sql += " AND relationship_type = ?"
-            params.append(relationship_type.strip().lower())
-
-        async with self._db.transaction():
-            cursor = await self._db.execute(sql, tuple(params))
-            count = cursor.rowcount
+        async with self._storage.transaction():
+            count = await self._storage.delete_relationships(
+                source_entity.id, target_entity.id, relationship_type
+            )
 
         log.info(
             "delete_relationships: %d deleted (%s -> %s, type=%s)",
@@ -475,14 +369,16 @@ class GraphEngine:
         entity = await self.resolve_entity(entity_name)
         results: list[ObservationResult] = []
 
-        async with self._db.transaction():
+        async with self._storage.transaction():
             for obs in observations:
                 obs_id = obs.id if obs.id else generate_id()
                 now = time.time()
-                await self._db.execute(
-                    "INSERT INTO observations (id, entity_id, content, source, created_at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (obs_id, entity.id, obs.content, obs.source, now),
+                await self._storage.insert_observation(
+                    obs_id=obs_id,
+                    entity_id=entity.id,
+                    content=obs.content,
+                    source=obs.source,
+                    created_at=now,
                 )
                 results.append(
                     ObservationResult(
@@ -502,10 +398,7 @@ class GraphEngine:
     async def get_observations(self, entity_name: str) -> list[Observation]:
         """Get all observations for a named entity, newest first."""
         entity = await self.resolve_entity(entity_name)
-        rows = await self._db.fetch_all(
-            "SELECT * FROM observations WHERE entity_id = ? ORDER BY created_at DESC",
-            (entity.id,),
-        )
+        rows = await self._storage.get_observations_for_entity(entity.id)
         return [Observation.from_row(row) for row in rows]
 
     # ── Entity resolution ────────────────────────────────────────────────
@@ -524,57 +417,23 @@ class GraphEngine:
 
         # Step 1: exact match with type constraint
         if entity_type is not None:
-            row = await self._db.fetch_one(
-                "SELECT * FROM entities WHERE name = ? AND entity_type = ?",
-                (name, entity_type.strip().lower()),
-            )
+            row = await self._storage.get_entity_by_name(name, entity_type.strip().lower())
             if row is not None:
                 return Entity.from_row(row)
 
         # Step 2: exact match on name only
-        row = await self._db.fetch_one("SELECT * FROM entities WHERE name = ?", (name,))
+        row = await self._storage.get_entity_by_name(name)
         if row is not None:
             return Entity.from_row(row)
 
         # Step 3: case-insensitive match
-        row = await self._db.fetch_one(
-            "SELECT * FROM entities WHERE name = ? COLLATE NOCASE", (name,)
-        )
+        row = await self._storage.get_entity_by_name_nocase(name)
         if row is not None:
             return Entity.from_row(row)
 
         # Step 4: not found — gather suggestions and raise
-        suggestions = await self._suggest_similar(name)
+        suggestions = await self._storage.fts_suggest_similar(name)
         raise EntityNotFoundError(name, suggestions=suggestions)
-
-    async def _suggest_similar(self, name: str, limit: int = 5) -> list[str]:
-        """Query FTS5 for entity names similar to *name*.
-
-        Falls back to LIKE-based prefix/substring matching if FTS5
-        yields no results or the table doesn't exist.
-        """
-        suggestions: list[str] = []
-
-        # Try FTS5 first
-        try:
-            fts_query = name.replace('"', '""')
-            rows = await self._db.fetch_all(
-                "SELECT name FROM entities_fts WHERE entities_fts MATCH ? LIMIT ?",
-                (f'"{fts_query}"', limit),
-            )
-            suggestions = [str(r["name"]) for r in rows]
-        except (sqlite3.Error, ValueError, OSError) as exc:
-            log.debug("FTS5 suggestion query failed for %r: %s — falling back to LIKE", name, exc)
-
-        # Fallback to LIKE if FTS5 returned nothing
-        if not suggestions:
-            rows = await self._db.fetch_all(
-                "SELECT name FROM entities WHERE name LIKE ? LIMIT ?",
-                (f"%{name}%", limit),
-            )
-            suggestions = [str(r["name"]) for r in rows]
-
-        return suggestions
 
     # ── Stats ────────────────────────────────────────────────────────────
 
@@ -590,36 +449,13 @@ class GraphEngine:
         - ``most_connected``: Top 10 entities by degree (in + out).
         - ``recent_entities``: 10 most recently updated entities.
         """
-        # Total counts (run in parallel-safe fashion — all are reads)
-        entity_count_row = await self._db.fetch_one("SELECT COUNT(*) AS cnt FROM entities")
-        rel_count_row = await self._db.fetch_one("SELECT COUNT(*) AS cnt FROM relationships")
-        obs_count_row = await self._db.fetch_one("SELECT COUNT(*) AS cnt FROM observations")
+        entity_count = await self._storage.count_entities()
+        rel_count = await self._storage.count_relationships()
+        obs_count = await self._storage.count_observations()
+        entity_types = await self._storage.entity_type_distribution()
+        relationship_types = await self._storage.relationship_type_distribution()
 
-        entity_count = int(entity_count_row["cnt"]) if entity_count_row else 0
-        rel_count = int(rel_count_row["cnt"]) if rel_count_row else 0
-        obs_count = int(obs_count_row["cnt"]) if obs_count_row else 0
-
-        # Entity type distribution
-        type_rows = await self._db.fetch_all(
-            "SELECT entity_type, COUNT(*) AS cnt FROM entities GROUP BY entity_type ORDER BY cnt DESC"
-        )
-        entity_types = {str(r["entity_type"]): int(r["cnt"]) for r in type_rows}
-
-        # Relationship type distribution
-        rel_type_rows = await self._db.fetch_all(
-            "SELECT relationship_type, COUNT(*) AS cnt FROM relationships GROUP BY relationship_type ORDER BY cnt DESC"
-        )
-        relationship_types = {str(r["relationship_type"]): int(r["cnt"]) for r in rel_type_rows}
-
-        # Top 10 most connected entities (in + out degree)
-        connected_rows = await self._db.fetch_all(
-            "SELECT e.id, e.name, e.entity_type, "
-            "  (SELECT COUNT(*) FROM relationships WHERE source_id = e.id) + "
-            "  (SELECT COUNT(*) FROM relationships WHERE target_id = e.id) AS degree "
-            "FROM entities e "
-            "ORDER BY degree DESC "
-            "LIMIT 10"
-        )
+        connected_rows = await self._storage.most_connected_entities(10)
         most_connected = [
             ConnectedEntry(
                 id=str(r["id"]),
@@ -630,10 +466,7 @@ class GraphEngine:
             for r in connected_rows
         ]
 
-        # 10 most recent entities
-        recent_rows = await self._db.fetch_all(
-            "SELECT * FROM entities ORDER BY updated_at DESC LIMIT 10"
-        )
+        recent_rows = await self._storage.recent_entities(10)
         recent_entities = [Entity.from_row(r).to_dict() for r in recent_rows]
 
         return StatsResult(

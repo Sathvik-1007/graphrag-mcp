@@ -1,29 +1,28 @@
 """Hybrid search combining vector similarity, FTS5 full-text, and RRF fusion.
 
 Search strategy:
-1. Vector similarity via sqlite-vec (cosine distance)
-2. FTS5 full-text search (BM25 ranking)
+1. Vector similarity via StorageBackend.vector_search (cosine distance)
+2. FTS5 full-text search via StorageBackend.fts_search_*
 3. Reciprocal Rank Fusion to combine rankings
 
-RRF_score(item) = Σ 1 / (k + rank_in_method)  where k=60
+RRF_score(item) = sum(1 / (k + rank_in_method))  where k=60
+
+The search layer is **storage-agnostic**: it delegates all persistence
+and query operations to a :class:`StorageBackend`.
 """
 
 from __future__ import annotations
 
-import sqlite3
 from typing import TYPE_CHECKING, Any, TypedDict
-
-from graphrag_mcp.utils.errors import EmbeddingError
-from graphrag_mcp.utils.logging import get_logger
-
 
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
-from graphrag_mcp.semantic.embeddings import _embedding_to_bytes
+from graphrag_mcp.utils.errors import EmbeddingError
+from graphrag_mcp.utils.logging import get_logger
 
 if TYPE_CHECKING:
-    from graphrag_mcp.db.connection import Database
     from graphrag_mcp.semantic.embeddings import EmbeddingEngine
+    from graphrag_mcp.storage.base import StorageBackend
 
 
 class _RelationshipEntry(TypedDict):
@@ -66,12 +65,12 @@ class HybridSearch:
     """Combined vector + full-text search with RRF fusion.
 
     Usage::
-        search = HybridSearch(db, embedding_engine)
+        search = HybridSearch(storage, embedding_engine)
         results = await search.search_entities("detective in Berlin", limit=10)
     """
 
-    def __init__(self, db: Database, embeddings: EmbeddingEngine) -> None:
-        self._db = db
+    def __init__(self, storage: StorageBackend, embeddings: EmbeddingEngine) -> None:
+        self._storage = storage
         self._embeddings = embeddings
 
     # ── Shared retrieval primitives ──────────────────────────────────
@@ -88,65 +87,39 @@ class HybridSearch:
             return results
 
         try:
-            vectors = await self._embeddings.embed([query], self._db)
+            vectors = await self._embeddings.embed([query])
             query_vec = vectors[0]
             if query_vec is None:
                 raise ValueError("Embedding returned None for query")
 
+            from graphrag_mcp.semantic.embeddings import _embedding_to_bytes
+
             query_blob = _embedding_to_bytes(query_vec)
 
-            rows = await self._db.fetch_all(
-                f"""
-                SELECT id, distance
-                FROM {table}
-                WHERE embedding MATCH ?
-                ORDER BY distance
-                LIMIT ?
-                """,
-                (query_blob, limit * 3),
-            )
-            for rank, row in enumerate(rows):
-                results[str(row["id"])] = 1.0 / (RRF_K + rank + 1)
-        except (ValueError, EmbeddingError, sqlite3.Error) as exc:
+            rows = await self._storage.vector_search(table, query_blob, limit * 3)
+            for rank, (item_id, _distance) in enumerate(rows):
+                results[item_id] = 1.0 / (RRF_K + rank + 1)
+        except (ValueError, EmbeddingError) as exc:
             log.warning(
                 "Vector search on %s unavailable: %s — results will rely on FTS5 only", table, exc
             )
 
         return results
 
-    async def _fts_search(
-        self,
-        query: str,
-        *,
-        fts_table: str,
-        join_sql: str,
-        id_column: str,
-        limit: int,
-    ) -> dict[str, float]:
-        """Run FTS5 search and return ``{id: rrf_score}``."""
+    async def _fts_entity_search(self, query: str, limit: int) -> dict[str, float]:
+        """Run FTS5 search on entities and return ``{id: rrf_score}``."""
         results: dict[str, float] = {}
-        try:
-            safe_query = query.replace('"', '""')
-            rows = await self._db.fetch_all(
-                f"""
-                SELECT {id_column}
-                FROM {fts_table} fts
-                {join_sql}
-                WHERE {fts_table} MATCH ?
-                ORDER BY rank
-                LIMIT ?
-                """,
-                (f'"{safe_query}" OR {safe_query}', limit * 3),
-            )
-            for rank, row in enumerate(rows):
-                results[str(row["id"])] = 1.0 / (RRF_K + rank + 1)
-        except (sqlite3.Error, ValueError) as exc:
-            log.warning(
-                "FTS5 search on %s unavailable: %s — results will rely on vector search only",
-                fts_table,
-                exc,
-            )
+        rows = await self._storage.fts_search_entities(query, limit * 3)
+        for rank, (entity_id, _rank_score) in enumerate(rows):
+            results[entity_id] = 1.0 / (RRF_K + rank + 1)
+        return results
 
+    async def _fts_observation_search(self, query: str, limit: int) -> dict[str, float]:
+        """Run FTS5 search on observations and return ``{id: rrf_score}``."""
+        results: dict[str, float] = {}
+        rows = await self._storage.fts_search_observations(query, limit * 3)
+        for rank, (obs_id, _rank_score) in enumerate(rows):
+            results[obs_id] = 1.0 / (RRF_K + rank + 1)
         return results
 
     @staticmethod
@@ -185,37 +158,22 @@ class HybridSearch:
         observations and direct relationships attached.
         """
         vec_results = await self._vector_search(query, "entity_embeddings", limit)
-        fts_results = await self._fts_search(
-            query,
-            fts_table="entities_fts",
-            join_sql="JOIN entities e ON e.rowid = fts.rowid",
-            id_column="e.id, e.name, rank",
-            limit=limit,
-        )
+        fts_results = await self._fts_entity_search(query, limit)
         scored = self._rrf_fuse(vec_results, fts_results)
         if not scored:
             return []
 
         # ── Batch-fetch entities in one query ────────────────────────
-        # Fetch more candidates than needed so the type filter can
-        # discard some without falling below `limit`.
         candidate_ids = [eid for eid, _ in scored[: limit * 3]]
         if not candidate_ids:
             return []
 
-        placeholders = ",".join("?" for _ in candidate_ids)
-        type_clause = ""
-        params: list[object] = list(candidate_ids)
+        rows = await self._storage.fetch_entity_rows(candidate_ids)
 
+        # Apply type filter if needed
         if entity_types:
-            type_ph = ",".join("?" for _ in entity_types)
-            type_clause = f" AND entity_type IN ({type_ph})"
-            params.extend(entity_types)
-
-        rows = await self._db.fetch_all(
-            f"SELECT * FROM entities WHERE id IN ({placeholders}){type_clause}",
-            tuple(params),
-        )
+            type_set = set(entity_types)
+            rows = [r for r in rows if str(r.get("entity_type", "")) in type_set]
 
         # Build lookup for O(1) access by id
         row_by_id: dict[str, Any] = {str(r["id"]): r for r in rows}
@@ -234,35 +192,23 @@ class HybridSearch:
 
             # Optionally attach observations
             if include_observations:
-                obs_rows = await self._db.fetch_all(
-                    "SELECT * FROM observations WHERE entity_id = ? ORDER BY created_at DESC",
-                    (entity_id,),
-                )
-
+                obs_rows = await self._storage.get_observations_for_entity(entity_id)
                 entry["observations"] = [Observation.from_row(r).to_dict() for r in obs_rows]
 
             # Attach direct relationships (always useful context)
-            rel_rows = await self._db.fetch_all(
-                """
-                SELECT r.*, 
-                    CASE WHEN r.source_id = ? THEN 'outgoing' ELSE 'incoming' END AS direction,
-                    CASE WHEN r.source_id = ? THEN te.name ELSE se.name END AS connected_entity
-                FROM relationships r
-                LEFT JOIN entities se ON se.id = r.source_id
-                LEFT JOIN entities te ON te.id = r.target_id
-                WHERE r.source_id = ? OR r.target_id = ?
-                LIMIT 20
-                """,
-                (entity_id, entity_id, entity_id, entity_id),
-            )
+            rel_rows = await self._storage.get_relationships_for_entity(entity_id)
             entry["relationships"] = [
                 _RelationshipEntry(
                     relationship_type=str(r["relationship_type"]),
-                    direction=str(r["direction"]),
-                    connected_entity=str(r["connected_entity"]),
+                    direction="outgoing" if str(r.get("source_id")) == entity_id else "incoming",
+                    connected_entity=(
+                        str(r.get("target_name", ""))
+                        if str(r.get("source_id")) == entity_id
+                        else str(r.get("source_name", ""))
+                    ),
                     weight=float(r["weight"]),
                 )
-                for r in rel_rows
+                for r in rel_rows[:20]  # Limit to 20 relationships per entity
             ]
 
             results.append(entry)
@@ -283,42 +229,31 @@ class HybridSearch:
         Optionally scoped to a single entity.
         """
         vec_results = await self._vector_search(query, "observation_embeddings", limit)
-        fts_results = await self._fts_search(
-            query,
-            fts_table="observations_fts",
-            join_sql="JOIN observations o ON o.rowid = fts.rowid",
-            id_column="o.id",
-            limit=limit,
-        )
+        fts_results = await self._fts_observation_search(query, limit)
         scored = self._rrf_fuse(vec_results, fts_results)
         if not scored:
             return []
 
-        # ── Batch-fetch observations in one query ────────────────────
+        # ── Batch-fetch observations ─────────────────────────────────
         candidate_ids = [oid for oid, _ in scored[: limit * 3]]
         if not candidate_ids:
             return []
 
-        placeholders = ",".join("?" for _ in candidate_ids)
-        obs_rows = await self._db.fetch_all(
-            f"SELECT * FROM observations WHERE id IN ({placeholders})",
+        # Use raw fetch for observation batch lookup
+        obs_rows = await self._storage.fetch_all(
+            f"SELECT * FROM observations WHERE id IN ({','.join('?' for _ in candidate_ids)})",
             tuple(candidate_ids),
         )
         obs_by_id: dict[str, Any] = {str(r["id"]): r for r in obs_rows}
 
         # ── Batch-fetch parent entity names ──────────────────────────
-        parent_ids = list({str(r["entity_id"]) for r in obs_rows})
-        ent_lookup: dict[str, dict[str, str]] = {}
+        parent_ids = {str(r["entity_id"]) for r in obs_rows}
+        ent_lookup = await self._storage.resolve_entity_names(parent_ids)
+        # Also need entity_type — fetch full rows
+        ent_type_lookup: dict[str, str] = {}
         if parent_ids:
-            ent_ph = ",".join("?" for _ in parent_ids)
-            ent_rows = await self._db.fetch_all(
-                f"SELECT id, name, entity_type FROM entities WHERE id IN ({ent_ph})",
-                tuple(parent_ids),
-            )
-            ent_lookup = {
-                str(r["id"]): {"name": str(r["name"]), "entity_type": str(r["entity_type"])}
-                for r in ent_rows
-            }
+            ent_rows = await self._storage.fetch_entity_rows(list(parent_ids))
+            ent_type_lookup = {str(r["id"]): str(r.get("entity_type", "")) for r in ent_rows}
 
         # ── Assemble results in score order ──────────────────────────
         results: list[dict[str, Any]] = []
@@ -330,12 +265,13 @@ class HybridSearch:
                 continue
 
             obs = Observation.from_row(row)
-            entry = {**obs.to_dict(), "relevance_score": round(score, 6)}
+            entry: dict[str, Any] = {**obs.to_dict(), "relevance_score": round(score, 6)}
 
-            parent = ent_lookup.get(str(row["entity_id"]))
-            if parent:
-                entry["entity_name"] = parent["name"]
-                entry["entity_type"] = parent["entity_type"]
+            parent_eid = str(row["entity_id"])
+            if parent_eid in ent_lookup:
+                entry["entity_name"] = ent_lookup[parent_eid]
+            if parent_eid in ent_type_lookup:
+                entry["entity_type"] = ent_type_lookup[parent_eid]
 
             results.append(entry)
             if len(results) >= limit:

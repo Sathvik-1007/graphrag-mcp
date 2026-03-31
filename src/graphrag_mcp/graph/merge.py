@@ -7,16 +7,21 @@ When entities are discovered to be duplicates, merge them:
 4. Handle duplicate relationships after redirect
 5. Delete source entity
 6. All within a single transaction
+
+The merger accepts a :class:`StorageBackend` and delegates all
+persistence to it, making it compatible with any backend.
 """
 
 from __future__ import annotations
 
 import time
-from typing import TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from graphrag_mcp.db.connection import Database
 from graphrag_mcp.utils.errors import EntityError
 from graphrag_mcp.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from graphrag_mcp.storage.base import StorageBackend
 
 log = get_logger("graph.merge")
 
@@ -31,26 +36,15 @@ class MergeResult(TypedDict):
     removed_duplicate_relationships: int
 
 
-class _RelRow(TypedDict):
-    """Shape of a row from the ``relationships`` table (used internally)."""
-
-    id: str
-    source_id: str
-    target_id: str
-    relationship_type: str
-    weight: float
-    properties: str
-
-
 class EntityMerger:
     """Handles entity deduplication and merge operations."""
 
-    def __init__(self, db: Database) -> None:
-        self._db = db
+    def __init__(self, storage: StorageBackend) -> None:
+        self._storage = storage
 
     async def _redirect_relationship(
         self,
-        rel: _RelRow,
+        rel: dict[str, Any],
         source_id: str,
         target_id: str,
         *,
@@ -70,43 +64,41 @@ class EntityMerger:
         # Determine the "other" endpoint that stays fixed and the lookup
         # order for the duplicate check.
         if redirect_column == "source_id":
-            other = rel["target_id"]
+            other = str(rel["target_id"])
             if other == source_id:
                 other = target_id  # self-ref becomes target self-ref
             check_source, check_target = target_id, other
         else:
-            other = rel["source_id"]
+            other = str(rel["source_id"])
             if other == source_id:
                 # Already handled by the source_id pass.
                 return 0, 0
             check_source, check_target = other, target_id
 
-        existing = await self._db.fetch_one(
-            "SELECT id, weight FROM relationships "
-            "WHERE source_id = ? AND target_id = ? AND relationship_type = ?",
-            (check_source, check_target, rel["relationship_type"]),
+        existing = await self._storage.get_relationship(
+            check_source, check_target, str(rel["relationship_type"])
         )
 
         if existing:
             # Keep the higher weight
-            if rel["weight"] > existing["weight"]:
-                await self._db.execute(
-                    "UPDATE relationships SET weight = ?, updated_at = ? WHERE id = ?",
-                    (rel["weight"], now, existing["id"]),
+            if float(rel["weight"]) > float(existing["weight"]):
+                await self._storage.update_relationship(
+                    str(existing["id"]),
+                    {"weight": float(rel["weight"]), "updated_at": now},
                 )
-            await self._db.execute("DELETE FROM relationships WHERE id = ?", (rel["id"],))
+            await self._storage.delete_relationship_by_id(str(rel["id"]))
             return 0, 1
 
         # No duplicate — just repoint the endpoint.
         if redirect_column == "source_id":
-            await self._db.execute(
-                "UPDATE relationships SET source_id = ?, target_id = ?, updated_at = ? WHERE id = ?",
-                (target_id, other, now, rel["id"]),
+            await self._storage.update_relationship(
+                str(rel["id"]),
+                {"source_id": target_id, "target_id": other, "updated_at": now},
             )
         else:
-            await self._db.execute(
-                "UPDATE relationships SET target_id = ?, updated_at = ? WHERE id = ?",
-                (target_id, now, rel["id"]),
+            await self._storage.update_relationship(
+                str(rel["id"]),
+                {"target_id": target_id, "updated_at": now},
             )
         return 1, 0
 
@@ -124,8 +116,8 @@ class EntityMerger:
             raise EntityError("Cannot merge an entity with itself.")
 
         # Verify both exist
-        target = await self._db.fetch_one("SELECT * FROM entities WHERE id = ?", (target_id,))
-        source = await self._db.fetch_one("SELECT * FROM entities WHERE id = ?", (source_id,))
+        target = await self._storage.get_entity_by_id(target_id)
+        source = await self._storage.get_entity_by_id(source_id)
         if not target:
             raise EntityError(f"Target entity {target_id} not found.")
         if not source:
@@ -136,30 +128,22 @@ class EntityMerger:
         redirected_relationships = 0
         removed_duplicate_rels = 0
 
-        async with self._db.transaction():
+        async with self._storage.transaction():
             # 1. Merge descriptions
             new_desc = str(target["description"] or "")
             source_desc = str(source["description"] or "")
             if source_desc and source_desc not in new_desc:
                 new_desc = f"{new_desc}\n{source_desc}".strip()
-                await self._db.execute(
-                    "UPDATE entities SET description = ?, updated_at = ? WHERE id = ?",
-                    (new_desc, now, target_id),
+                await self._storage.update_entity_fields(
+                    target_id, {"description": new_desc, "updated_at": now}
                 )
 
             # 2. Move observations
-            cursor = await self._db.execute(
-                "UPDATE observations SET entity_id = ? WHERE entity_id = ?",
-                (target_id, source_id),
-            )
-            moved_observations = cursor.rowcount
+            moved_observations = await self._storage.move_observations(source_id, target_id)
 
             # 3-4. Redirect relationships (both endpoints)
             for column in ("source_id", "target_id"):
-                rels = await self._db.fetch_all(
-                    f"SELECT * FROM relationships WHERE {column} = ?",  # noqa: S608
-                    (source_id,),
-                )
+                rels = await self._storage.get_relationships_by_column(column, source_id)
                 for rel in rels:
                     redirected, removed = await self._redirect_relationship(
                         rel,
@@ -172,7 +156,7 @@ class EntityMerger:
                     removed_duplicate_rels += removed
 
             # 5. Delete source entity (cascades via FK but we already moved everything)
-            await self._db.execute("DELETE FROM entities WHERE id = ?", (source_id,))
+            await self._storage.delete_entity(source_id)
 
         log.info(
             "Merged entity %s into %s: %d observations moved, %d relationships redirected, %d duplicates removed",

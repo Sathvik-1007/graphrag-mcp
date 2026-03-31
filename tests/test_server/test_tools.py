@@ -12,8 +12,6 @@ from pathlib import Path
 import pytest_asyncio
 
 import graphrag_mcp.server as server_mod
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import run_migrations
 from graphrag_mcp.graph.engine import GraphEngine
 from graphrag_mcp.graph.merge import EntityMerger
 from graphrag_mcp.graph.traversal import GraphTraversal
@@ -44,20 +42,21 @@ from graphrag_mcp.utils.config import Config
 @pytest_asyncio.fixture
 async def setup_server(tmp_path: Path):
     """Populate the module-level _state so tool functions work."""
+    from graphrag_mcp.storage import SQLiteBackend
+
     db_path = tmp_path / "test.db"
-    db = Database(db_path)
-    await db.initialize()
-    await run_migrations(db)
+    storage = SQLiteBackend(db_path)
+    await storage.initialize()
 
     # Leave embeddings uninitialised → available=False (no model download)
     embeddings = EmbeddingEngine(model_name="test", use_onnx=False)
 
-    graph = GraphEngine(db)
-    traversal = GraphTraversal(db)
-    merger = EntityMerger(db)
-    search = HybridSearch(db, embeddings)
+    graph = GraphEngine(storage)
+    traversal = GraphTraversal(storage)
+    merger = EntityMerger(storage)
+    search = HybridSearch(storage, embeddings)
 
-    server_mod._state.db = db
+    server_mod._state.storage = storage
     server_mod._state.graph = graph
     server_mod._state.traversal = traversal
     server_mod._state.merger = merger
@@ -67,8 +66,8 @@ async def setup_server(tmp_path: Path):
 
     yield
 
-    await db.close()
-    server_mod._state.db = None
+    await storage.close()
+    server_mod._state.storage = None
     server_mod._state.graph = None
     server_mod._state.traversal = None
     server_mod._state.merger = None

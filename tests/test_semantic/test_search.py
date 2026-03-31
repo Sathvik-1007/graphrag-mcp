@@ -6,25 +6,23 @@ from pathlib import Path
 
 import pytest_asyncio
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import run_migrations
 from graphrag_mcp.graph.engine import GraphEngine
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
 from graphrag_mcp.semantic.embeddings import EmbeddingEngine
 from graphrag_mcp.semantic.search import HybridSearch
+from graphrag_mcp.storage import SQLiteBackend
 
 
 @pytest_asyncio.fixture
 async def search_env(tmp_path: Path):
-    db = Database(tmp_path / "test.db")
-    await db.initialize()
-    await run_migrations(db)
-    graph = GraphEngine(db)
+    storage = SQLiteBackend(tmp_path / "test.db")
+    await storage.initialize()
+    graph = GraphEngine(storage)
     embeddings = EmbeddingEngine(model_name="test", use_onnx=False)
-    search = HybridSearch(db, embeddings)
-    yield db, graph, search
-    await db.close()
+    search = HybridSearch(storage, embeddings)
+    yield storage, graph, search
+    await storage.close()
 
 
 async def test_search_entities_empty(search_env):

@@ -42,6 +42,9 @@ class Config:
     eagerly so misconfigurations surface immediately, not at runtime.
     """
 
+    # ── Storage backend ──────────────────────────────────────────────────
+    backend_type: str = field(default_factory=lambda: _env("GRAPHRAG_BACKEND_TYPE", "sqlite"))
+
     # ── Database ─────────────────────────────────────────────────────────
     db_path: Path = field(
         default_factory=lambda: Path(_env("GRAPHRAG_DB_PATH", ".graphrag/graph.db"))
@@ -67,6 +70,11 @@ class Config:
 
     def __post_init__(self) -> None:
         """Validate all configuration values."""
+        valid_backends = {"sqlite"}
+        if self.backend_type not in valid_backends:
+            raise ConfigError(
+                f"GRAPHRAG_BACKEND_TYPE must be one of {valid_backends}, got {self.backend_type!r}"
+            )
         if self.cache_size < 0:
             raise ConfigError(f"GRAPHRAG_CACHE_SIZE must be >= 0, got {self.cache_size}")
         if self.search_limit < 1:

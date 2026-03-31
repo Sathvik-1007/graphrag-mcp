@@ -7,50 +7,33 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import run_migrations
 from graphrag_mcp.graph.engine import GraphEngine
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
 from graphrag_mcp.semantic.embeddings import EmbeddingEngine
 from graphrag_mcp.semantic.search import HybridSearch
+from graphrag_mcp.storage import SQLiteBackend
 
 
 @pytest_asyncio.fixture
 async def vector_env(tmp_path: Path):
-    """Set up a database with vector tables for testing."""
-    db = Database(tmp_path / "test_vec.db")
-    await db.initialize()
-    await run_migrations(db)
-    graph = GraphEngine(db)
+    """Set up a storage backend with vector tables for testing."""
+    storage = SQLiteBackend(tmp_path / "test_vec.db")
+    await storage.initialize()
+    graph = GraphEngine(storage)
 
     # Create an embedding engine with mocked model
     engine = EmbeddingEngine(model_name="test-model", use_onnx=False)
     engine._available = True
     engine._dimension = 4  # Small dimension for testing
-    engine._db = db
+    engine._storage = storage
 
-    # Create vector tables manually (since we skip real initialization)
-    try:
-        await db.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS entity_embeddings USING vec0(
-                id TEXT PRIMARY KEY,
-                embedding float[4]
-            )
-        """)
-        await db.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS observation_embeddings USING vec0(
-                id TEXT PRIMARY KEY,
-                embedding float[4]
-            )
-        """)
-        vec_available = True
-    except Exception:
-        vec_available = False
+    # Create vector tables via the storage backend
+    vec_available = await storage.ensure_vec_tables(4)
 
-    search = HybridSearch(db, engine)
-    yield db, graph, engine, search, vec_available
-    await db.close()
+    search = HybridSearch(storage, engine)
+    yield storage, graph, engine, search, vec_available
+    await storage.close()
 
 
 @pytest.mark.skipif(
@@ -204,14 +187,13 @@ class TestVectorSearchFallback:
 
     async def test_vector_search_empty_when_unavailable(self, tmp_path: Path):
         """When embeddings are unavailable, _vector_search returns empty dict."""
-        db = Database(tmp_path / "test_fallback.db")
-        await db.initialize()
-        await run_migrations(db)
+        storage = SQLiteBackend(tmp_path / "test_fallback.db")
+        await storage.initialize()
 
         engine = EmbeddingEngine(model_name="test", use_onnx=False)
         # engine._available remains False
-        search = HybridSearch(db, engine)
+        search = HybridSearch(storage, engine)
 
         result = await search._vector_search("query", "entity_embeddings", 10)
         assert result == {}
-        await db.close()
+        await storage.close()

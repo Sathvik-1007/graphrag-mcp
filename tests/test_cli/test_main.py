@@ -12,12 +12,14 @@ from graphrag_mcp.cli.main import cli
 
 
 def _extract_json(output: str) -> dict:
-    """Extract JSON object from CLI output that may contain logging noise."""
+    """Extract the first JSON object from CLI output that may contain logging noise."""
     text = output.strip()
     json_start = text.find("{")
     if json_start < 0:
         raise ValueError(f"No JSON object found in output: {text!r}")
-    return json.loads(text[json_start:])
+    decoder = json.JSONDecoder()
+    obj, _end = decoder.raw_decode(text, json_start)
+    return obj
 
 
 @pytest.fixture

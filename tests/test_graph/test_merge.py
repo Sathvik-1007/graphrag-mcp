@@ -7,25 +7,23 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import run_migrations
 from graphrag_mcp.graph.engine import GraphEngine
 from graphrag_mcp.graph.merge import EntityMerger
 from graphrag_mcp.models.entity import Entity
 from graphrag_mcp.models.observation import Observation
 from graphrag_mcp.models.relationship import Relationship
+from graphrag_mcp.storage import SQLiteBackend
 from graphrag_mcp.utils.errors import EntityError
 
 
 @pytest_asyncio.fixture
 async def db_and_engine(tmp_path: Path):
-    db = Database(tmp_path / "test.db")
-    await db.initialize()
-    await run_migrations(db)
-    graph = GraphEngine(db)
-    merger = EntityMerger(db)
-    yield db, graph, merger
-    await db.close()
+    storage = SQLiteBackend(tmp_path / "test.db")
+    await storage.initialize()
+    graph = GraphEngine(storage)
+    merger = EntityMerger(storage)
+    yield storage, graph, merger
+    await storage.close()
 
 
 async def _create_entity(graph: GraphEngine, name: str, **kwargs) -> str:

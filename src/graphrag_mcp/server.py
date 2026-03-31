@@ -1,10 +1,13 @@
 """FastMCP server — registers all 12 Graph-RAG MCP tools.
 
 This is the core entry point.  A lifespan context manager initialises
-shared state (database, engines, search) once at startup and tears it
-down on shutdown.  Each tool is a thin async wrapper that delegates to
-the appropriate engine, catches ``GraphRAGError`` subtypes, and returns
-JSON-serialisable dicts.
+shared state (storage backend, engines, search) once at startup and
+tears it down on shutdown.  Each tool is a thin async wrapper that
+delegates to the appropriate engine, catches ``GraphRAGError`` subtypes,
+and returns JSON-serialisable dicts.
+
+The server is **storage-agnostic**: it uses :func:`storage.create_backend`
+to instantiate the configured backend (SQLite, Neo4j, Memgraph, etc.).
 """
 
 from __future__ import annotations
@@ -15,10 +18,10 @@ from typing import Any, AsyncIterator
 
 from mcp.server.fastmcp import FastMCP
 
-from graphrag_mcp.db import Database, run_migrations
 from graphrag_mcp.graph import EntityMerger, GraphEngine, GraphTraversal
 from graphrag_mcp.models import Entity, Observation, Relationship
 from graphrag_mcp.semantic import EmbeddingEngine, HybridSearch
+from graphrag_mcp.storage import StorageBackend, create_backend
 from graphrag_mcp.utils import Config, GraphRAGError, get_logger, load_config, setup_logging
 from graphrag_mcp.utils.errors import EntityNotFoundError
 
@@ -38,7 +41,7 @@ class AppState:
     """
 
     config: Config | None = None
-    db: Database | None = None
+    storage: StorageBackend | None = None
     graph: GraphEngine | None = None
     traversal: GraphTraversal | None = None
     merger: EntityMerger | None = None
@@ -55,7 +58,7 @@ class InitializedState:
     """
 
     config: Config
-    db: Database
+    storage: StorageBackend
     graph: GraphEngine
     traversal: GraphTraversal
     merger: EntityMerger
@@ -75,7 +78,7 @@ def _require_state() -> InitializedState:
     """
     if (
         _state.config is None
-        or _state.db is None
+        or _state.storage is None
         or _state.graph is None
         or _state.traversal is None
         or _state.merger is None
@@ -85,7 +88,7 @@ def _require_state() -> InitializedState:
         raise GraphRAGError("Server not initialised.  Is the lifespan running?")
     return InitializedState(
         config=_state.config,
-        db=_state.db,
+        storage=_state.storage,
         graph=_state.graph,
         traversal=_state.traversal,
         merger=_state.merger,
@@ -101,15 +104,15 @@ def _require_state() -> InitializedState:
 
 @asynccontextmanager
 async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
-    """Initialise all engines on startup; close the database on shutdown."""
+    """Initialise all engines on startup; close the storage on shutdown."""
     config = _state.config or load_config()
     setup_logging(config.log_level)
-    log.info("Starting graphrag-mcp server")
+    log.info("Starting graphrag-mcp server (backend=%s)", config.backend_type)
 
+    # Create and initialize storage backend
     db_path = config.ensure_db_dir()
-    db = Database(db_path)
-    await db.initialize()
-    await run_migrations(db)
+    storage = create_backend(config.backend_type, db_path=db_path)
+    await storage.initialize()
 
     embeddings = EmbeddingEngine(
         model_name=config.embedding_model,
@@ -118,7 +121,7 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
         cache_size=config.cache_size,
     )
     try:
-        await embeddings.initialize(db)
+        await embeddings.initialize(storage)
     except GraphRAGError as init_exc:
         log.warning(
             "Embedding engine unavailable — semantic search disabled: %s",
@@ -126,26 +129,30 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
             exc_info=True,
         )
 
-    graph = GraphEngine(db)
-    traversal = GraphTraversal(db)
-    merger = EntityMerger(db)
-    search = HybridSearch(db, embeddings)
+    graph = GraphEngine(storage)
+    traversal = GraphTraversal(storage)
+    merger = EntityMerger(storage)
+    search = HybridSearch(storage, embeddings)
 
     _state.config = config
-    _state.db = db
+    _state.storage = storage
     _state.graph = graph
     _state.traversal = traversal
     _state.merger = merger
     _state.embeddings = embeddings
     _state.search = search
 
-    log.info("graphrag-mcp server ready (embeddings=%s)", embeddings.available)
+    log.info(
+        "graphrag-mcp server ready (backend=%s, embeddings=%s)",
+        storage.backend_type,
+        embeddings.available,
+    )
     yield
 
     # Shutdown
     log.info("Shutting down graphrag-mcp server")
-    await db.close()
-    _state.db = None
+    await storage.close()
+    _state.storage = None
     _state.graph = None
     _state.traversal = None
     _state.merger = None
@@ -218,10 +225,10 @@ async def _embed_entities(entity_ids: list[str]) -> None:
     if not texts:
         return
 
-    vectors = await state.embeddings.embed(texts, state.db)
+    vectors = await state.embeddings.embed(texts)
     for eid, vec in zip(valid_ids, vectors):
         if vec is not None:
-            await state.embeddings.upsert_entity_embedding(eid, vec, state.db)
+            await state.embeddings.upsert_entity_embedding(eid, vec)
 
 
 async def _embed_observations(obs_results: list[dict[str, Any]]) -> None:
@@ -237,10 +244,10 @@ async def _embed_observations(obs_results: list[dict[str, Any]]) -> None:
     texts = [str(o["content"]) for o in obs_results]
     ids = [str(o["id"]) for o in obs_results]
 
-    vectors = await state.embeddings.embed(texts, state.db)
+    vectors = await state.embeddings.embed(texts)
     for oid, vec in zip(ids, vectors):
         if vec is not None:
-            await state.embeddings.upsert_observation_embedding(oid, vec, state.db)
+            await state.embeddings.upsert_observation_embedding(oid, vec)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -456,7 +463,7 @@ async def delete_entities(names: list[str]) -> dict[str, Any]:
         if state.embeddings.available:
             for eid in entity_ids:
                 try:
-                    await state.embeddings.delete_entity_embedding(eid, state.db)
+                    await state.embeddings.delete_entity_embedding(eid)
                 except GraphRAGError as emb_exc:
                     log.debug(
                         "Failed to clean up embedding for entity %s: %s — "
@@ -496,7 +503,7 @@ async def merge_entities(
         # Clean up source embedding
         if state.embeddings.available:
             try:
-                await state.embeddings.delete_entity_embedding(source_entity.id, state.db)
+                await state.embeddings.delete_entity_embedding(source_entity.id)
             except GraphRAGError as emb_exc:
                 log.debug(
                     "Failed to clean up embedding for merged entity %s: %s — "
