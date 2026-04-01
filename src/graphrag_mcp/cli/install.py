@@ -8,7 +8,6 @@ Supports: claude, opencode, codex, gemini, cursor, windsurf, amp.
 
 from __future__ import annotations
 
-import importlib.resources
 import os
 import re
 import tempfile
@@ -191,33 +190,68 @@ Or with an explicit project directory:
 # Skill content loader
 # ---------------------------------------------------------------------------
 
+# Files that compose the modular skill, in assembly order.
+_SKILL_PARTS: tuple[str, ...] = (
+    "SKILL.md",
+    "conventions.md",
+    "workflows.md",
+    "best-practices.md",
+)
+
+_VALID_DOMAINS: tuple[str, ...] = ("general", "code", "research")
+
+
+def _assemble_skill_content(domain: str = "general") -> str:
+    """Assemble modular skill content from the skills/graphrag-mcp/ directory.
+
+    Reads each component file and the requested domain overlay, joining them
+    with ``---`` separators.
+
+    Args:
+        domain: One of ``"general"``, ``"code"``, or ``"research"``.
+
+    Resolution order for each file:
+    1. Filesystem relative to this source file (works in editable installs)
+    2. Hard-coded fallback (always works)
+    """
+    if domain not in _VALID_DOMAINS:
+        log.warning("Unknown domain %r — falling back to 'general'", domain)
+        domain = "general"
+
+    skill_dir = Path(__file__).resolve().parents[3] / "skills" / "graphrag-mcp"
+
+    parts: list[str] = []
+    for filename in _SKILL_PARTS:
+        filepath = skill_dir / filename
+        try:
+            text = filepath.read_text(encoding="utf-8")
+            if text.strip():
+                parts.append(text.strip())
+                continue
+        except (FileNotFoundError, OSError) as exc:
+            log.debug("Could not load %s: %s — falling back", filename, exc)
+
+        # Any missing file triggers full fallback.
+        return _FALLBACK_SKILL
+
+    # Load domain overlay.
+    domain_path = skill_dir / "domains" / f"{domain}.md"
+    try:
+        domain_text = domain_path.read_text(encoding="utf-8")
+        if domain_text.strip():
+            parts.append(domain_text.strip())
+    except (FileNotFoundError, OSError) as exc:
+        log.debug("Could not load domain overlay %s: %s — skipping", domain, exc)
+
+    return "\n\n---\n\n".join(parts) + "\n"
+
 
 def _load_skill_content() -> str:
-    """Load the bundled SKILL.md content.
+    """Load the assembled skill content with the default (general) domain.
 
-    Resolution order:
-    1. importlib.resources (works in installed packages)
-    2. Filesystem relative to this source file (works in editable installs)
-    3. Hard-coded fallback (always works)
+    Retained for backward compatibility.
     """
-    # 1. Package resources (Python 3.10+)
-    try:
-        ref = importlib.resources.files("graphrag_mcp") / ".." / ".." / "skills" / "SKILL.md"
-        text = ref.read_text(encoding="utf-8")
-        if text.strip():
-            return text
-    except (FileNotFoundError, OSError, TypeError, ValueError) as exc:
-        log.debug("Could not load SKILL.md via importlib.resources: %s — trying filesystem", exc)
-
-    # 2. Filesystem fallback (editable / dev installs)
-    skill_path = Path(__file__).resolve().parents[3] / "skills" / "SKILL.md"
-    if skill_path.exists():
-        text = skill_path.read_text(encoding="utf-8")
-        if text.strip():
-            return text
-
-    # 3. Hard-coded fallback
-    return _FALLBACK_SKILL
+    return _assemble_skill_content(domain="general")
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +353,7 @@ def install_skill(
     *,
     scope: str = "project",
     project_dir: Path | None = None,
+    domain: str = "general",
 ) -> Path:
     """Install the graphrag-mcp skill for *agent*.
 
@@ -327,6 +362,8 @@ def install_skill(
         scope: ``"project"`` (current working directory) or ``"global"`` (user
             home).
         project_dir: Override the project directory (defaults to ``Path.cwd()``).
+        domain: Domain overlay to include. One of ``"general"``, ``"code"``,
+            or ``"research"``.
 
     Returns:
         Absolute :class:`~pathlib.Path` to the installed skill file.
@@ -348,7 +385,7 @@ def install_skill(
         project_dir = Path.cwd()
 
     target = _resolve_target(agent, scope, project_dir)
-    content = _load_skill_content()
+    content = _assemble_skill_content(domain)
     method = _effective_method(agent, scope)
 
     if method == "section":
