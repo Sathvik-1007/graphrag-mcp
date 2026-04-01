@@ -747,6 +747,68 @@ def validate(db_path: str | None, project_dir: str | None) -> None:
         raise SystemExit(1)
 
 
+# ── ui ───────────────────────────────────────────────────────────────────────
+
+
+@cli.command()
+@click.option(
+    "--port",
+    type=int,
+    default=0,
+    help="Port to serve the UI on (default: auto-select available port).",
+)
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    help="Host to bind to (default: 127.0.0.1).",
+)
+@click.option(
+    "--no-open",
+    is_flag=True,
+    default=False,
+    help="Don't automatically open the browser.",
+)
+@click.option(
+    "--db",
+    "db_path",
+    default=None,
+    type=click.Path(),
+    help="Path to graph.db (default: .graphrag/graph.db).",
+)
+@click.option(
+    "--project-dir",
+    default=None,
+    type=click.Path(exists=True, file_okay=False),
+    help="Project directory containing .graphrag/.",
+)
+def ui(
+    port: int,
+    host: str,
+    no_open: bool,
+    db_path: str | None,
+    project_dir: str | None,
+) -> None:
+    """Launch the graph visualisation UI in your browser."""
+    _resolve_db_path(db_path, project_dir)
+
+    try:
+        from graphrag_mcp.ui.server import start_server
+    except ImportError as exc:
+        _print_error(
+            f"UI dependencies not installed: {exc}\n"
+            "  Install with: pip install graphrag-mcp[ui]"
+        )
+        raise SystemExit(1) from exc
+
+    try:
+        _run_async(start_server(host=host, port=port, no_open=no_open))
+    except KeyboardInterrupt:
+        click.echo("\nStopped.")
+    except GraphRAGError as exc:
+        _print_error(str(exc))
+        raise SystemExit(1) from exc
+
+
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 

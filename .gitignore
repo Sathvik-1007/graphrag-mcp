@@ -22,3 +22,5 @@ htmlcov/
 *.onnx
 .DS_Store
 docs/superpowers/plans/
+ui-frontend/node_modules/
+ui-frontend/dist/
