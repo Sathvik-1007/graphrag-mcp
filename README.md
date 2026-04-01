@@ -5,11 +5,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 
+**No API keys. No cloud provider. No external services.** graphrag-mcp is a fully local MCP server that plugs into any MCP-compatible agent (Claude Code, OpenCode, Codex CLI, Gemini CLI, Cursor, Windsurf, Amp) as a standard tool provider. Install it, add it to your MCP config, and your agent immediately gains persistent memory -- nothing else required.
+
 ---
 
 ## What is this?
 
-LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **graphrag-mcp** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. It runs entirely locally with zero API keys required -- just install and go.
+LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **graphrag-mcp** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. It runs entirely locally -- no API provider accounts, no cloud dependencies, no Docker containers. Just `pip install graphrag-mcp` and go.
 
 ### Why a graph, not just a vector store?
 
@@ -186,6 +188,16 @@ graphrag-mcp server
 Everything lives in a single SQLite database per project. No external services, no Docker containers, no API keys. The server communicates over MCP's standard stdio transport (SSE also supported) and stores all data in `.graphrag/graph.db` at your project root.
 
 The database file is portable -- copy it between machines, check it into version control, or back it up like any other file.
+
+---
+
+## MCP Integration
+
+graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 12 tools that the agent can call directly.
+
+**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 12 new tools (`add_entities`, `search_nodes`, `find_connections`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+
+To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics (entity count, relationship count, etc.).
 
 ---
 
