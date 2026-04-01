@@ -21,6 +21,8 @@ htmlcov/
 .coverage
 *.onnx
 .DS_Store
-docs/superpowers/plans/
+docs/superpowers/
+scorecard.png
+.github/copilot-instructions.md
 ui-frontend/node_modules/
 ui-frontend/dist/
