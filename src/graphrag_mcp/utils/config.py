@@ -34,6 +34,16 @@ def _env_int(key: str, default: int) -> int:
         raise ConfigError(f"Environment variable {key}={raw!r} is not a valid integer.") from exc
 
 
+def _env_float(key: str, default: float) -> float:
+    raw = os.environ.get(key)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"Environment variable {key}={raw!r} is not a valid float.") from exc
+
+
 @dataclass(frozen=True, slots=True)
 class Config:
     """Immutable application configuration.
@@ -62,6 +72,14 @@ class Config:
     search_limit: int = field(default_factory=lambda: _env_int("GRAPHRAG_SEARCH_LIMIT", 10))
     max_hops: int = field(default_factory=lambda: _env_int("GRAPHRAG_MAX_HOPS", 4))
 
+    # ── Search tuning ────────────────────────────────────────────────────
+    rrf_alpha: float = field(
+        default_factory=lambda: _env_float("GRAPHRAG_RRF_ALPHA", 0.5)
+    )
+    obs_boost: float = field(
+        default_factory=lambda: _env_float("GRAPHRAG_OBS_BOOST", 0.5)
+    )
+
     # ── Logging ──────────────────────────────────────────────────────────
     log_level: str = field(default_factory=lambda: _env("GRAPHRAG_LOG_LEVEL", "WARNING"))
 
@@ -81,6 +99,10 @@ class Config:
             raise ConfigError(f"GRAPHRAG_SEARCH_LIMIT must be >= 1, got {self.search_limit}")
         if self.max_hops < 1:
             raise ConfigError(f"GRAPHRAG_MAX_HOPS must be >= 1, got {self.max_hops}")
+        if not (0.0 <= self.rrf_alpha <= 1.0):
+            raise ConfigError(f"GRAPHRAG_RRF_ALPHA must be between 0.0 and 1.0, got {self.rrf_alpha}")
+        if self.obs_boost < 0.0:
+            raise ConfigError(f"GRAPHRAG_OBS_BOOST must be >= 0.0, got {self.obs_boost}")
         valid_transports = {"stdio", "sse", "streamable-http"}
         if self.transport not in valid_transports:
             raise ConfigError(

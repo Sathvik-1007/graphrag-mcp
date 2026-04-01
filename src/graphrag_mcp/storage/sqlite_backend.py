@@ -295,6 +295,52 @@ class SQLiteBackend(StorageBackend):
         )
         return await self._require_db().fetch_all(sql, tuple(params))
 
+    async def get_relationships_for_entities(
+        self,
+        entity_ids: list[str],
+        direction: str = "both",
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not entity_ids:
+            return {}
+
+        result: dict[str, list[dict[str, Any]]] = {eid: [] for eid in entity_ids}
+        placeholders = ",".join("?" for _ in entity_ids)
+
+        if direction == "outgoing":
+            where_clause = f"r.source_id IN ({placeholders})"
+            params = tuple(entity_ids)
+        elif direction == "incoming":
+            where_clause = f"r.target_id IN ({placeholders})"
+            params = tuple(entity_ids)
+        else:  # both
+            where_clause = f"r.source_id IN ({placeholders}) OR r.target_id IN ({placeholders})"
+            params = tuple(entity_ids) + tuple(entity_ids)
+
+        rows = await self._require_db().fetch_all(
+            f"""
+            SELECT r.*,
+                   s.name AS source_name, s.entity_type AS source_type,
+                   t.name AS target_name, t.entity_type AS target_type
+            FROM relationships r
+            JOIN entities s ON s.id = r.source_id
+            JOIN entities t ON t.id = r.target_id
+            WHERE {where_clause}
+            ORDER BY r.weight DESC, r.updated_at DESC
+            """,
+            params,
+        )
+
+        for row in rows:
+            row_dict = dict(row)
+            source_id = str(row_dict.get("source_id", ""))
+            target_id = str(row_dict.get("target_id", ""))
+            if source_id in result:
+                result[source_id].append(row_dict)
+            if target_id in result and target_id != source_id:
+                result[target_id].append(row_dict)
+
+        return result
+
     async def delete_relationships(
         self, source_id: str, target_id: str, relationship_type: str | None = None
     ) -> int:
@@ -466,9 +512,36 @@ class SQLiteBackend(StorageBackend):
 
     # ── Full-text search ─────────────────────────────────────────────────
 
+    def _sanitize_fts5_query(self, query: str) -> str:
+        """Sanitize a user query for safe use in FTS5 MATCH expressions.
+
+        FTS5 interprets many characters and words as operators:
+        - Boolean: AND, OR, NOT
+        - Prefix: *
+        - Negation: -
+        - Grouping: ( )
+        - Column filter: :
+        - Proximity: NEAR
+        - Caret: ^
+        - Plus: +
+
+        Wrapping in double quotes makes FTS5 treat the entire input as
+        a literal phrase. Internal double quotes are escaped by doubling.
+
+        Args:
+            query: Raw user query string.
+
+        Returns:
+            A quoted, escaped string safe for FTS5 MATCH.
+        """
+        stripped = query.strip()
+        if not stripped:
+            return '""'
+        escaped = stripped.replace('"', '""')
+        return f'"{escaped}"'
+
     async def fts_search_entities(self, query: str, limit: int) -> list[tuple[str, float]]:
         try:
-            safe_query = query.replace('"', '""')
             rows = await self._require_db().fetch_all(
                 """
                 SELECT e.id, rank
@@ -478,7 +551,7 @@ class SQLiteBackend(StorageBackend):
                 ORDER BY rank
                 LIMIT ?
                 """,
-                (f'"{safe_query}" OR {safe_query}', limit),
+                (self._sanitize_fts5_query(query), limit),
             )
             return [(str(r["id"]), float(r["rank"])) for r in rows]
         except (sqlite3.Error, ValueError) as exc:
@@ -487,7 +560,6 @@ class SQLiteBackend(StorageBackend):
 
     async def fts_search_observations(self, query: str, limit: int) -> list[tuple[str, float]]:
         try:
-            safe_query = query.replace('"', '""')
             rows = await self._require_db().fetch_all(
                 """
                 SELECT o.id
@@ -497,7 +569,7 @@ class SQLiteBackend(StorageBackend):
                 ORDER BY rank
                 LIMIT ?
                 """,
-                (f'"{safe_query}" OR {safe_query}', limit),
+                (self._sanitize_fts5_query(query), limit),
             )
             return [(str(r["id"]), float(idx)) for idx, r in enumerate(rows)]
         except (sqlite3.Error, ValueError) as exc:
@@ -510,10 +582,9 @@ class SQLiteBackend(StorageBackend):
 
         # Try FTS5 first
         try:
-            fts_query = name.replace('"', '""')
             rows = await db.fetch_all(
                 "SELECT name FROM entities_fts WHERE entities_fts MATCH ? LIMIT ?",
-                (f'"{fts_query}"', limit),
+                (self._sanitize_fts5_query(name), limit),
             )
             suggestions = [str(r["name"]) for r in rows]
         except (sqlite3.Error, ValueError, OSError) as exc:

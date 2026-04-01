@@ -126,21 +126,104 @@ class HybridSearch:
     def _rrf_fuse(
         vec_results: dict[str, float],
         fts_results: dict[str, float],
+        alpha: float = 0.5,
     ) -> list[tuple[str, float]]:
         """Combine vector and FTS results using Reciprocal Rank Fusion.
 
-        Returns ``[(id, score), ...]`` sorted by descending fused score.
+        Args:
+            vec_results: ``{id: rrf_score}`` from vector similarity search.
+            fts_results: ``{id: rrf_score}`` from FTS5 full-text search.
+            alpha: Balance between vector (alpha) and FTS5 (1-alpha) results.
+                0.0 = FTS5 only, 1.0 = vector only, 0.5 = equal weight.
+
+        Returns:
+            ``[(id, score), ...]`` sorted by descending fused score.
+
+        Raises:
+            ValueError: If *alpha* is not in ``[0.0, 1.0]``.
         """
+        if not (0.0 <= alpha <= 1.0):
+            raise ValueError(f"alpha must be between 0.0 and 1.0, got {alpha}")
+
         all_ids = set(vec_results) | set(fts_results)
         if not all_ids:
             return []
 
         scored = [
-            (item_id, vec_results.get(item_id, 0.0) + fts_results.get(item_id, 0.0))
+            (
+                item_id,
+                alpha * vec_results.get(item_id, 0.0) + (1.0 - alpha) * fts_results.get(item_id, 0.0),
+            )
             for item_id in all_ids
         ]
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored
+
+    async def _boost_from_observations(
+        self,
+        query: str,
+        entity_scores: list[tuple[str, float]],
+        limit: int,
+        obs_boost_factor: float,
+    ) -> list[tuple[str, float]]:
+        """Boost entity scores based on matching observations.
+
+        Runs observation search, maps observation scores back to parent
+        entities, and merges with entity-level scores.
+
+        Args:
+            query: The search query.
+            entity_scores: Current ``[(entity_id, score)]`` from entity search.
+            limit: Search limit (controls observation search breadth).
+            obs_boost_factor: Weight multiplier for observation-derived scores.
+
+        Returns:
+            Re-ranked ``[(entity_id, score)]`` with observation boost applied.
+        """
+        # Run observation search through the same channels
+        obs_vec = await self._vector_search(query, "observation_embeddings", limit)
+        obs_fts = await self._fts_observation_search(query, limit)
+        obs_scored = self._rrf_fuse(obs_vec, obs_fts)
+
+        if not obs_scored:
+            return entity_scores
+
+        # Batch-fetch observations to find parent entity IDs
+        obs_ids = [oid for oid, _ in obs_scored[:limit * 3]]
+        if not obs_ids:
+            return entity_scores
+
+        obs_rows = await self._storage.fetch_all(
+            f"SELECT id, entity_id FROM observations WHERE id IN ({','.join('?' for _ in obs_ids)})",
+            tuple(obs_ids),
+        )
+        obs_to_entity: dict[str, str] = {
+            str(r["id"]): str(r["entity_id"]) for r in obs_rows
+        }
+
+        # Accumulate observation scores per parent entity
+        obs_entity_scores: dict[str, float] = {}
+        for obs_id, obs_score in obs_scored:
+            parent_eid = obs_to_entity.get(obs_id)
+            if parent_eid:
+                obs_entity_scores[parent_eid] = (
+                    obs_entity_scores.get(parent_eid, 0.0) + obs_score
+                )
+
+        # Merge: entity_score + obs_score * boost_factor
+        entity_score_map = dict(entity_scores)
+        all_ids = set(entity_score_map) | set(obs_entity_scores)
+
+        merged = [
+            (
+                eid,
+                entity_score_map.get(eid, 0.0)
+                + obs_entity_scores.get(eid, 0.0) * obs_boost_factor,
+            )
+            for eid in all_ids
+        ]
+        merged.sort(key=lambda x: x[1], reverse=True)
+        return merged
 
     # ── Public search methods ────────────────────────────────────────
 
@@ -151,15 +234,29 @@ class HybridSearch:
         limit: int = 10,
         entity_types: list[str] | None = None,
         include_observations: bool = False,
+        boost_from_observations: bool = True,
+        obs_boost_factor: float = 0.5,
     ) -> list[SearchResult]:
         """Search entities using hybrid vector + FTS5 + RRF.
 
         Returns entities ranked by fused relevance score, with optional
         observations and direct relationships attached.
+
+        When *boost_from_observations* is True (default), observation search
+        results are used to boost parent entity scores, allowing entities
+        to be found through their observations even when entity-level
+        text doesn't match well.
         """
         vec_results = await self._vector_search(query, "entity_embeddings", limit)
         fts_results = await self._fts_entity_search(query, limit)
         scored = self._rrf_fuse(vec_results, fts_results)
+
+        # ── Observation-boosted entity fusion ────────────────────
+        if boost_from_observations and obs_boost_factor > 0.0:
+            scored = await self._boost_from_observations(
+                query, scored, limit, obs_boost_factor
+            )
+
         if not scored:
             return []
 
@@ -177,6 +274,10 @@ class HybridSearch:
 
         # Build lookup for O(1) access by id
         row_by_id: dict[str, Any] = {str(r["id"]): r for r in rows}
+
+        # Batch-fetch relationships for all result entities (eliminates N+1)
+        all_entity_ids = [eid for eid, _ in scored[: limit * 3] if eid in row_by_id]
+        all_rels = await self._storage.get_relationships_for_entities(all_entity_ids)
 
         # ── Assemble results in score order ──────────────────────────
         results: list[SearchResult] = []
@@ -196,7 +297,7 @@ class HybridSearch:
                 entry["observations"] = [Observation.from_row(r).to_dict() for r in obs_rows]
 
             # Attach direct relationships (always useful context)
-            rel_rows = await self._storage.get_relationships_for_entity(entity_id)
+            rel_rows = all_rels.get(entity_id, [])
             entry["relationships"] = [
                 _RelationshipEntry(
                     relationship_type=str(r["relationship_type"]),

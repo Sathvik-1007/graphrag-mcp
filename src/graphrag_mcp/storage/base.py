@@ -178,6 +178,24 @@ class StorageBackend(ABC):
         """
 
     @abstractmethod
+    async def get_relationships_for_entities(
+        self,
+        entity_ids: list[str],
+        direction: str = "both",
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Batch-fetch relationships for multiple entities in a single query.
+
+        Args:
+            entity_ids: List of entity IDs to fetch relationships for.
+            direction: 'outgoing', 'incoming', or 'both' (default).
+
+        Returns:
+            Dict mapping entity_id to list of its relationship dicts.
+            Entities with no relationships map to empty lists.
+            Returned dicts include source_name, source_type, target_name, target_type.
+        """
+
+    @abstractmethod
     async def delete_relationships(
         self,
         source_id: str,

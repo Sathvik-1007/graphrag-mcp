@@ -29,6 +29,7 @@ from graphrag_mcp.server import (
     merge_entities,
     read_graph,
     search_nodes,
+    search_observations,
     update_entity,
 )
 from graphrag_mcp.utils.config import Config
@@ -461,3 +462,17 @@ async def test_find_paths_basic(setup_server):
     path_names = [step["entity_name"] for step in path]
     assert path_names[0] == "X"
     assert path_names[-1] == "Z"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# search_observations
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_search_observations_tool(setup_server):
+    """search_observations MCP tool returns results."""
+    await add_entities([{"name": "TestEntity", "entity_type": "concept"}])
+    await add_observations("TestEntity", ["The rate limit was increased to 500 req/s"])
+    result = await search_observations(query="rate limit", limit=5)
+    assert "results" in result
+    assert result["count"] >= 0

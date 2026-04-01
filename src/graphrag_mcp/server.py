@@ -1,4 +1,4 @@
-"""FastMCP server — registers all 12 Graph-RAG MCP tools.
+"""FastMCP server — registers all 13 Graph-RAG MCP tools.
 
 This is the core entry point.  A lifespan context manager initialises
 shared state (storage backend, engines, search) once at startup and
@@ -520,7 +520,7 @@ async def merge_entities(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# READ TOOLS (6)
+# READ TOOLS (7)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -560,6 +560,48 @@ async def search_nodes(
 
     except GraphRAGError as exc:
         return _error_response(exc, tool_name="search_nodes")
+
+
+@mcp.tool()
+async def search_observations(
+    query: str,
+    limit: int = 10,
+    entity_name: str | None = None,
+) -> dict[str, Any]:
+    """Search observations using hybrid semantic + full-text search.
+
+    Searches the text content of observations (atomic facts attached to entities)
+    using combined vector similarity and FTS5 keyword matching. Useful for finding
+    specific facts, events, or details that may not be reflected in entity names
+    or descriptions.
+
+    Args:
+        query: Natural language search query.
+        limit: Maximum results to return (default 10).
+        entity_name: Optional — restrict search to observations belonging to this entity.
+
+    Returns:
+        Matching observations with their parent entity names and relevance scores.
+    """
+    try:
+        state = _require_state()
+
+        # If entity_name given, resolve to entity_id
+        entity_id: str | None = None
+        if entity_name:
+            entity = await state.graph.resolve_entity(entity_name)
+            entity_id = entity.id
+
+        results = await state.search.search_observations(
+            query,
+            limit=limit,
+            entity_id=entity_id,
+        )
+
+        return {"results": results, "count": len(results), "query": query}
+
+    except GraphRAGError as exc:
+        return _error_response(exc, tool_name="search_observations")
 
 
 @mcp.tool()

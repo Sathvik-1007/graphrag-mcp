@@ -116,6 +116,9 @@ def test_register_and_use_custom_backend():
         ):
             return []
 
+        async def get_relationships_for_entities(self, entity_ids, direction="both"):
+            return {eid: [] for eid in entity_ids}
+
         async def delete_relationships(self, source_id, target_id, relationship_type=None):
             return 0
 
