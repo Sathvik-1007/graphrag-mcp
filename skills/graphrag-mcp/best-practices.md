@@ -10,8 +10,27 @@ pattern means:
 - Record design decisions with rationale as observations
 - Track which domain overlay you're using and why
 - Update the graph when the project evolves
+- **Store plans before work begins and implementations after work ends**
 
 The graph eats its own tail: it documents the work, and the work maintains the graph.
+
+### Plan → Implementation → Future Plan
+
+Every significant task should create two linked entities:
+
+1. **Plan entity** (type: `plan`) — Created *before* work begins
+   - Captures intent, constraints, acceptance criteria
+   - Observations track planned steps and goals
+   - Related to the entities it will affect
+
+2. **Implementation entity** (type: `implementation`) — Created *after* work completes
+   - Captures what was actually done, including deviations
+   - Observations track outcomes, metrics, lessons learned
+   - Linked to the plan via `IMPLEMENTS` relationship
+
+Future sessions search for these to understand both *why* something was done (plan)
+and *how* it was done (implementation). This trail of intent and execution is what
+makes the graph genuinely useful across long-running projects.
 
 ## Memory Hygiene
 
@@ -48,6 +67,12 @@ merge duplicates, delete stale entities. A maintained graph is worth 10x an aban
 
 **Session-end-only writes**: Don't batch all your graph updates to the end of a session.
 You'll forget details and skip most of them. Write as you go.
+
+**Plans without implementations**: Storing a plan but never recording the implementation
+means you lose the most valuable context — what actually happened and why it deviated.
+
+**Implementations without plans**: Recording what you did without documenting the original
+intent makes it impossible to understand design decisions in future sessions.
 
 ## When NOT to Store
 

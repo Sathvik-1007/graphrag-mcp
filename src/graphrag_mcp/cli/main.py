@@ -269,18 +269,26 @@ _SUPPORTED_AGENTS = ("claude", "opencode", "codex", "gemini", "cursor", "windsur
     type=click.Path(exists=True, file_okay=False, resolve_path=True),
     help="Project root directory for skill installation.",
 )
-def install(agent: str, scope: str, project_dir: str | None) -> None:
+@click.option(
+    "--domain",
+    type=click.Choice(["general", "code", "research"]),
+    default="general",
+    help="Domain overlay to include (general, code, or research).",
+)
+def install(agent: str, scope: str, project_dir: str | None, domain: str) -> None:
     """Install agent skill configuration for AGENT.
 
     Writes the appropriate MCP configuration file so that the
-    selected coding agent can discover graphrag-mcp.
+    selected coding agent can discover graphrag-mcp.  Use --domain
+    to include a domain-specific overlay (e.g. code for software
+    engineering, research for academic papers).
     """
     try:
         from graphrag_mcp.cli.install import install_skill  # lazy import
 
         pd = Path(project_dir) if project_dir else None
-        result_path: Path = install_skill(agent=agent, scope=scope, project_dir=pd)
-        click.secho(f"Installed {agent} skill ({scope}):", fg="green")
+        result_path: Path = install_skill(agent=agent, scope=scope, project_dir=pd, domain=domain)
+        click.secho(f"Installed {agent} skill ({scope}, domain={domain}):", fg="green")
         click.echo(f"  {result_path}")
     except GraphRAGError as exc:
         log.debug("Install command failed: %s", exc, exc_info=True)

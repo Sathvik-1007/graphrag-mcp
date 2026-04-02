@@ -122,11 +122,16 @@ class StorageBackend(ABC):
 
     @abstractmethod
     async def delete_entity(self, entity_id: str) -> None:
-        """Delete an entity and cascade to its observations and relationships."""
+        """Remove an entity and all data that depends on it.
+
+        Cascades to observations, relationships (both as source and target),
+        and embedding vectors.  The caller must ensure any merge logic has
+        already been applied before invoking this method.
+        """
 
     @abstractmethod
     async def count_entities(self) -> int:
-        """Return the total number of entities."""
+        """Count all entities in the store.  Includes every type and status."""
 
     @abstractmethod
     async def entity_type_distribution(self) -> dict[str, int]:

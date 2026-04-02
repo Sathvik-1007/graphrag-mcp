@@ -201,3 +201,97 @@ class TestVectorSearchFallback:
         result = await search._vector_search("query", "entity_embeddings", 10)
         assert result == {}
         await storage.close()
+
+
+class TestEnsureModelLoaded:
+    """Tests for _ensure_model_loaded lazy loading behaviour."""
+
+    def test_ensure_model_loaded_success_path(self) -> None:
+        """After successful load, _model_loaded is True and _available stays True."""
+        engine = EmbeddingEngine(model_name="test", use_onnx=False)
+        engine._available = True
+
+        # Mock _load_model to succeed and set _model
+        engine._load_model = lambda: setattr(
+            engine, "_model", type("M", (), {"get_sentence_embedding_dimension": lambda self: 4})()
+        )  # type: ignore[assignment]
+        engine._detect_dimension = lambda: 4  # type: ignore[assignment]
+
+        engine._ensure_model_loaded()
+        assert engine._model_loaded is True
+        assert engine._available is True
+        assert engine._dimension == 4
+
+    def test_ensure_model_loaded_idempotent(self) -> None:
+        """Calling _ensure_model_loaded twice does not re-load."""
+        engine = EmbeddingEngine(model_name="test", use_onnx=False)
+        engine._available = True
+        engine._model_loaded = True  # Already loaded
+
+        call_count = 0
+        original_load = engine._load_model
+
+        def counting_load() -> None:
+            nonlocal call_count
+            call_count += 1
+            original_load()
+
+        engine._load_model = counting_load  # type: ignore[assignment]
+        engine._ensure_model_loaded()
+        assert call_count == 0  # Should not have called _load_model
+
+    def test_ensure_model_loaded_sets_unavailable_on_model_load_error(self) -> None:
+        """When _load_model raises ModelLoadError, _available becomes False."""
+        from graphrag_mcp.utils.errors import ModelLoadError
+
+        engine = EmbeddingEngine(model_name="test", use_onnx=False)
+        engine._available = True
+
+        def failing_load() -> None:
+            raise ModelLoadError("test failure")
+
+        engine._load_model = failing_load  # type: ignore[assignment]
+
+        with pytest.raises(ModelLoadError):
+            engine._ensure_model_loaded()
+
+        assert engine._available is False
+        assert engine._model_loaded is False
+
+    def test_ensure_model_loaded_sets_unavailable_on_dimension_mismatch(self) -> None:
+        """When dimensions mismatch, _available becomes False."""
+        from graphrag_mcp.utils.errors import DimensionMismatchError
+
+        engine = EmbeddingEngine(model_name="test", use_onnx=False)
+        engine._available = True
+        engine._stored_dimension = 384  # DB says 384
+
+        engine._load_model = lambda: setattr(
+            engine, "_model", type("M", (), {"get_sentence_embedding_dimension": lambda self: 4})()
+        )  # type: ignore[assignment]
+        engine._detect_dimension = (
+            lambda: 128
+        )  # Model says 128 — mismatch!  # type: ignore[assignment]
+
+        with pytest.raises(DimensionMismatchError):
+            engine._ensure_model_loaded()
+
+        assert engine._available is False
+        assert engine._model_loaded is False
+
+    def test_ensure_model_loaded_sets_unavailable_on_runtime_error(self) -> None:
+        """When an unexpected RuntimeError occurs, _available becomes False."""
+        from graphrag_mcp.utils.errors import EmbeddingError
+
+        engine = EmbeddingEngine(model_name="test", use_onnx=False)
+        engine._available = True
+
+        def failing_load() -> None:
+            raise RuntimeError("CUDA not available")
+
+        engine._load_model = failing_load  # type: ignore[assignment]
+
+        with pytest.raises(EmbeddingError, match="Lazy model load failed"):
+            engine._ensure_model_loaded()
+
+        assert engine._available is False

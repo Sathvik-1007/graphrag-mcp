@@ -22,15 +22,20 @@ sessions.
 
 **The graph is only useful if you maintain it.** Don't treat it as a write-once archive.
 Treat it as a living document that you read from at the start of every session and write
-to throughout your work. The ouroboros pattern: the tool documents the work, and the work
-maintains the tool.
+to throughout your work.
 
-Every session should follow this loop:
-1. **Recall** — Search the graph for context before starting work
-2. **Work + Record** — Store decisions, discoveries, and facts as you go
-3. **Persist** — Sweep for anything you missed before ending the session
+**The ouroboros pattern**: the tool documents the work, and the work maintains the tool.
+Every task has a lifecycle that should be captured in the graph:
 
-If you skip steps 2 and 3, the graph becomes stale and step 1 becomes useless.
+1. **Plan** — Before starting work, store a `plan` entity describing what you intend to do
+2. **Recall** — Search the graph for context, prior decisions, and related work
+3. **Work + Record** — Store decisions, discoveries, and facts as you go
+4. **Implement** — After completing work, store an `implementation` entity describing what was done
+5. **Persist** — Sweep for anything you missed before ending the session
+
+If you skip the plan and implementation steps, the graph becomes a disconnected collection
+of facts. The plan↔implementation link is what makes the graph *navigable* — future sessions
+can trace from intent to outcome and understand both the "why" and the "how."
 
 ## The Three Primitives
 
@@ -44,6 +49,17 @@ If you skip steps 2 and 3, the graph becomes stale and step 1 becomes useless.
 
 **Relationship** — A typed, weighted, directional edge between two entities.
 - Has a type (e.g. "DEPENDS_ON"), weight (0.0-1.0), and optional properties
+
+## Core Entity Types
+
+These entity types form the backbone of the ouroboros pattern:
+
+- **plan** — What you intend to do (created at session start)
+- **implementation** — What you actually did (created at session end)
+- **decision** — A choice that was made, with rationale as observations
+
+Domain-specific entity types (modules, papers, people, etc.) are defined in the domain
+overlay files. These three core types apply regardless of domain.
 
 ## MCP Tools
 
@@ -67,10 +83,11 @@ If you skip steps 2 and 3, the graph becomes stale and step 1 becomes useless.
 ## When to Use Memory
 
 **Store** when you:
+- Start a task — create a `plan` entity with steps and goals as observations
 - Learn a new fact, concept, or relationship
 - Make or discover an architectural decision
 - Encounter a person, system, or important artifact
-- Complete a task with lessons worth remembering
+- Complete a task — create an `implementation` entity linked to the plan
 - Encounter a bug, its root cause, and fix
 
 **Retrieve** when you:
@@ -78,6 +95,7 @@ If you skip steps 2 and 3, the graph becomes stale and step 1 becomes useless.
 - Need to make a decision (check for prior decisions and context)
 - Encounter something that might already be known
 - Need to understand how components relate to each other
+- Want to understand *why* something was done a certain way (search for plans)
 
 **Update** when:
 - Facts change or descriptions become stale

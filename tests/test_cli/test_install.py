@@ -201,3 +201,56 @@ def test_invalid_agent_raises() -> None:
     """Passing an unsupported agent name should raise ValueError."""
     with pytest.raises(ValueError, match="Unsupported agent"):
         install_skill("notepad_plus_plus", scope="project")
+
+
+# ---------------------------------------------------------------------------
+# Domain overlay installs
+# ---------------------------------------------------------------------------
+
+
+def test_install_default_domain_is_general(project_dir: Path) -> None:
+    """Install with no domain flag defaults to 'general' overlay."""
+    result = install_skill("claude", scope="project", project_dir=project_dir)
+    content = result.read_text(encoding="utf-8")
+    assert "General Purpose" in content
+
+
+def test_install_domain_code(project_dir: Path) -> None:
+    """Install with domain='code' includes the software engineering overlay."""
+    result = install_skill("claude", scope="project", project_dir=project_dir, domain="code")
+    content = result.read_text(encoding="utf-8")
+    assert "Software Engineering" in content
+    # Code domain should include code-specific entity types
+    assert "module" in content
+    assert "IMPORTS" in content or "DEPENDS_ON" in content
+
+
+def test_install_domain_research(project_dir: Path) -> None:
+    """Install with domain='research' includes the research overlay."""
+    result = install_skill("claude", scope="project", project_dir=project_dir, domain="research")
+    content = result.read_text(encoding="utf-8")
+    assert "Research" in content
+    assert "paper" in content
+    assert "CITES" in content
+
+
+def test_install_all_domains_valid(project_dir: Path) -> None:
+    """Every supported domain produces a non-trivial assembled skill."""
+    for domain in ("general", "code", "research"):
+        path = install_skill("opencode", scope="project", project_dir=project_dir, domain=domain)
+        content = path.read_text(encoding="utf-8")
+        # Core skill content should always be present regardless of domain
+        assert "graphrag-mcp" in content.lower() or "knowledge graph" in content.lower()
+        assert len(content) > 200  # non-trivial
+
+
+def test_install_skill_no_domain_leakage(project_dir: Path) -> None:
+    """Core skill (no domain overlay) should not contain domain-specific entity types."""
+    from graphrag_mcp.cli.install import _assemble_skill_content
+
+    # The core content assembled with general domain should not mention
+    # code-specific types like 'module' or 'function' in its entity type lists
+    core = _assemble_skill_content(domain="general")
+    # General domain should not have code-specific relationship types
+    assert "IMPORTS" not in core
+    assert "CALLS" not in core

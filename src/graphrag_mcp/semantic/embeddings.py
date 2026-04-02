@@ -10,6 +10,20 @@ are cached by content hash (SHA-256) in the database to avoid recomputation.
 
 The engine is **storage-agnostic**: it delegates all persistence to a
 :class:`StorageBackend` instance.
+
+Error contract
+--------------
+- ``initialize()`` sets ``available = True`` optimistically and never raises.
+- ``_ensure_model_loaded()`` is called lazily on first ``embed()`` call.
+  If loading fails it sets ``available = False`` and raises ``EmbeddingError``.
+- ``embed()`` raises ``EmbeddingError`` when the engine is unavailable.
+- Callers in ``server.py`` (``_embed_entities``, ``_embed_observations``) check
+  ``available`` and silently skip embedding when ``False``.
+- Callers in ``search.py`` (``_vector_search``) catch ``EmbeddingError`` and
+  degrade to FTS-only search, returning an empty vector result set.
+
+These three strategies (skip, raise, catch-and-degrade) are intentional layers:
+server helpers are fire-and-forget, the engine is strict, and search is resilient.
 """
 
 from __future__ import annotations

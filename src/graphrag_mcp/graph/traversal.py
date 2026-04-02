@@ -96,13 +96,15 @@ class GraphTraversal:
             next_entity = _NEXT_ENTITY_BOTH
             dir_expr = "CASE WHEN r.source_id = t.entity_id THEN 'outgoing' ELSE 'incoming' END"
 
-        # Optional relationship type filter
+        # Optional relationship type filter.
+        # Params are built in SQL positional order: seed, seed, [rel_types…], max_hops.
         rel_type_filter = ""
-        params: list[object] = [entity_id, entity_id, max_hops]
+        params: list[object] = [entity_id, entity_id]
         if relationship_types:
             placeholders = ", ".join("?" for _ in relationship_types)
             rel_type_filter = f"AND r.relationship_type IN ({placeholders})"
             params.extend(rt.strip().lower() for rt in relationship_types)
+        params.append(max_hops)
 
         cycle_guard = _CYCLE_GUARD.format(next_entity=next_entity)
 
@@ -132,19 +134,6 @@ class GraphTraversal:
         WHERE t.depth > 0
         ORDER BY t.depth, e.name
         """
-
-        # Parameters: entity_id (seed), entity_id (initial visited), max_hops,
-        # then optional relationship_types.
-        # Rearrange: relationship_type params go before max_hops in the CTE,
-        # but we placed max_hops in the WHERE clause position.
-        # The CTE references ? in order: seed, seed, then rel_types, then max_hops.
-        # Fix ordering: seed, seed, [rel_types...], max_hops
-        if relationship_types:
-            # Rebuild params in correct positional order
-            ordered_params: list[object] = [entity_id, entity_id]
-            ordered_params.extend(rt.strip().lower() for rt in relationship_types)
-            ordered_params.append(max_hops)
-            params = ordered_params
 
         rows = await self._storage.fetch_all(sql, tuple(params))
 
