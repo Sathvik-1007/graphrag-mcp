@@ -427,14 +427,20 @@ class SQLiteBackend(StorageBackend):
     # ── Embedding operations ─────────────────────────────────────────────
 
     async def upsert_entity_embedding(self, entity_id: str, embedding: bytes) -> None:
-        await self._require_db().execute(
-            "INSERT OR REPLACE INTO entity_embeddings (id, embedding) VALUES (?, ?)",
+        db = self._require_db()
+        # vec0 virtual tables do not support INSERT OR REPLACE — delete first.
+        await db.execute("DELETE FROM entity_embeddings WHERE id = ?", (entity_id,))
+        await db.execute(
+            "INSERT INTO entity_embeddings (id, embedding) VALUES (?, ?)",
             (entity_id, embedding),
         )
 
     async def upsert_observation_embedding(self, obs_id: str, embedding: bytes) -> None:
-        await self._require_db().execute(
-            "INSERT OR REPLACE INTO observation_embeddings (id, embedding) VALUES (?, ?)",
+        db = self._require_db()
+        # vec0 virtual tables do not support INSERT OR REPLACE — delete first.
+        await db.execute("DELETE FROM observation_embeddings WHERE id = ?", (obs_id,))
+        await db.execute(
+            "INSERT INTO observation_embeddings (id, embedding) VALUES (?, ?)",
             (obs_id, embedding),
         )
 
