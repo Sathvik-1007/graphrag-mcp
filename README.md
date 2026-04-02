@@ -29,7 +29,7 @@ I want you to give yourself persistent memory using graphrag-mcp. Run the follow
 pip install graphrag-mcp
 graphrag-mcp install opencode    # or: claude, codex, gemini, cursor, windsurf, amp
 
-This installs a skill file that teaches you how to use the 12 MCP tools.
+This installs a skill file that teaches you how to use the 13 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
@@ -105,7 +105,7 @@ graphrag-mcp install windsurf      # Windsurf
 graphrag-mcp install amp           # Amp
 ```
 
-This writes a skill file that teaches your agent how to use all 12 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
+This writes a skill file that teaches your agent how to use all 13 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
 
 **2. Configure MCP** by adding this to your agent's MCP config:
 
@@ -146,7 +146,7 @@ That's it. Your agent now has persistent memory.
 
 ## Features
 
-graphrag-mcp exposes 12 MCP tools -- six for writing, six for reading:
+graphrag-mcp exposes 13 MCP tools -- six for writing, seven for reading:
 
 ### Write Tools
 
@@ -164,6 +164,7 @@ graphrag-mcp exposes 12 MCP tools -- six for writing, six for reading:
 | Tool | Description |
 |------|-------------|
 | `search_nodes` | Hybrid semantic + full-text search with RRF fusion |
+| `search_observations` | Semantic search directly over observations |
 | `find_connections` | Multi-hop graph traversal between entities |
 | `get_entity` | Full entity details with observations and relationships |
 | `read_graph` | Graph statistics overview |
@@ -193,9 +194,9 @@ The database file is portable -- copy it between machines, check it into version
 
 ## MCP Integration
 
-graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 12 tools that the agent can call directly.
+graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 13 tools that the agent can call directly.
 
-**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 12 new tools (`add_entities`, `search_nodes`, `find_connections`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 13 new tools (`add_entities`, `search_nodes`, `find_connections`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics (entity count, relationship count, etc.).
 
@@ -295,6 +296,7 @@ All server options:
 ```bash
 graphrag-mcp install <agent>                 # project-level install
 graphrag-mcp install <agent> --global        # global/user-level install
+graphrag-mcp install <agent> --domain code   # use domain overlay (code, research, general)
 ```
 
 Supported agents: `claude`, `opencode`, `codex`, `gemini`, `cursor`, `windsurf`, `amp`.
@@ -369,7 +371,7 @@ pip install -e ".[full,dev]"
 ### Running Tests
 
 ```bash
-pytest                            # all tests (279 pass)
+pytest                            # all tests (323 pass)
 pytest tests/test_graph/          # graph engine tests
 pytest tests/test_server/         # MCP server tool tests
 pytest tests/test_cli/            # CLI command tests
@@ -387,7 +389,7 @@ pytest -x -q                      # stop on first failure, quiet output
 src/graphrag_mcp/
   __init__.py              # package version
   __main__.py              # python -m graphrag_mcp support
-  server.py                # MCP server entry point and 12 tool definitions
+  server.py                # MCP server entry point and 13 tool definitions
   cli/
     main.py                # Click CLI: server, init, status, export, import, validate
     install.py             # Skill installer for 7 agent types
