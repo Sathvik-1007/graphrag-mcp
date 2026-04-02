@@ -196,6 +196,18 @@ def server(
       graphrag-mcp server --no-onnx --embedding-device cuda --log-level DEBUG
     """
     try:
+        # Suppress noisy third-party output before importing heavy deps.
+        os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+        os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+        os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        import logging as _logging
+        import warnings
+
+        warnings.filterwarnings("ignore", message=".*unauthenticated requests.*")
+        warnings.filterwarnings("ignore", message=".*HF_TOKEN.*")
+        for _name in ("huggingface_hub", "httpx", "httpcore", "filelock", "urllib3"):
+            _logging.getLogger(_name).setLevel(_logging.ERROR)
+
         # Propagate CLI options into environment so that Config picks them up.
         # Only set env vars for options that were explicitly provided — this
         # preserves the precedence: CLI flag > env var > Config default.

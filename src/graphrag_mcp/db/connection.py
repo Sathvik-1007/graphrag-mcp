@@ -99,8 +99,8 @@ class Database:
             if self._conn is None:  # pragma: no cover — always true when called from open()
                 return
             await self._conn.enable_load_extension(True)
-            conn_raw = self._conn._conn  # underlying sqlite3.Connection
-            sqlite_vec.load(conn_raw)
+            ext_path: str = sqlite_vec.loadable_path()
+            await self._conn.load_extension(ext_path)
             await self._conn.enable_load_extension(False)
             self._vec_loaded = True
             log.debug("sqlite-vec extension loaded")

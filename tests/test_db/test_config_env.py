@@ -35,10 +35,10 @@ def test_config_backend_type_invalid_env(monkeypatch: pytest.MonkeyPatch) -> Non
 # ── GRAPHRAG_USE_ONNX ──────────────────────────────────────────────────────
 
 
-def test_config_use_onnx_default_true() -> None:
-    """Default use_onnx is True."""
+def test_config_use_onnx_default_false() -> None:
+    """Default use_onnx is False (PyTorch backend preferred)."""
     config = Config()
-    assert config.use_onnx is True
+    assert config.use_onnx is False
 
 
 def test_config_use_onnx_env_false(monkeypatch: pytest.MonkeyPatch) -> None:

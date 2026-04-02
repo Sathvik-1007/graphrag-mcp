@@ -122,10 +122,8 @@ class EmbeddingEngine:
         # Try ONNX first
         if self._use_onnx:
             try:
-                import onnxruntime  # type: ignore[import-not-found]  # noqa: F401
-                from sentence_transformers import (  # type: ignore[import-not-found]
-                    SentenceTransformer,
-                )
+                import onnxruntime  # type: ignore[import-untyped]  # noqa: F401
+                from sentence_transformers import SentenceTransformer
 
                 log.info("Loading model %s with ONNX backend", self._model_name)
                 # Try to use ONNX-optimized model

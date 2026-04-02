@@ -64,7 +64,7 @@ class Config:
     embedding_model: str = field(
         default_factory=lambda: _env("GRAPHRAG_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
     )
-    use_onnx: bool = field(default_factory=lambda: _env_bool("GRAPHRAG_USE_ONNX", True))
+    use_onnx: bool = field(default_factory=lambda: _env_bool("GRAPHRAG_USE_ONNX", False))
     embedding_device: str = field(default_factory=lambda: _env("GRAPHRAG_EMBEDDING_DEVICE", "cpu"))
     cache_size: int = field(default_factory=lambda: _env_int("GRAPHRAG_CACHE_SIZE", 10000))
 

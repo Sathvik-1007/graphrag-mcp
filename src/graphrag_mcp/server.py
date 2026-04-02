@@ -131,7 +131,6 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
         log.warning(
             "Embedding engine unavailable — semantic search disabled: %s",
             init_exc,
-            exc_info=True,
         )
 
     graph = GraphEngine(storage)

@@ -7,6 +7,7 @@ Log level is controlled by GRAPHRAG_LOG_LEVEL (default: WARNING).
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -32,8 +33,22 @@ def setup_logging(level: str = "WARNING") -> None:
         root.addHandler(handler)
 
     # Suppress noisy third-party loggers
-    for name in ("sentence_transformers", "transformers", "torch", "onnxruntime"):
-        logging.getLogger(name).setLevel(logging.WARNING)
+    for name in (
+        "sentence_transformers",
+        "transformers",
+        "torch",
+        "onnxruntime",
+        "httpx",
+        "httpcore",
+        "huggingface_hub",
+        "filelock",
+        "urllib3",
+    ):
+        logging.getLogger(name).setLevel(logging.ERROR)
+
+    # Suppress the HuggingFace token warning via environment variable
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 
 def get_logger(name: str) -> logging.Logger:
