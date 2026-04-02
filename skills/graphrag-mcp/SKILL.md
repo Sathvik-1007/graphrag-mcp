@@ -1,6 +1,6 @@
 # graphrag-mcp: Knowledge Graph Memory
 
-Persistent, per-project knowledge graph memory for LLM agents via the Model Context Protocol.
+Persistent, structured knowledge graph memory for LLM agents via the Model Context Protocol.
 
 graphrag-mcp stores entities, relationships, and observations in a local SQLite database
 with hybrid semantic + full-text search. It runs entirely locally with embedded vector
@@ -17,6 +17,10 @@ as defined in the CoALA cognitive architecture framework.
 It is NOT working memory (your context window handles that) or procedural memory (your
 training and skills handle that). It is long-term structured memory that persists across
 sessions.
+
+**This tool is domain-agnostic.** It works equally well for software engineering, academic
+research, personal knowledge management, business strategy, creative projects, or any
+domain where structured knowledge and cross-session continuity matter.
 
 ## Core Principle: Use It Continuously
 
@@ -40,19 +44,19 @@ can trace from intent to outcome and understand both the "why" and the "how."
 ## The Three Primitives
 
 **Entity** — A named concept with a type and description. The node in the graph.
-- Has a unique name, a type (e.g. "person", "concept", "system"), and a free-text description
+- Has a unique name, a type (e.g. "person", "concept", "system", "paper"), and a free-text description
 - Properties dict for structured metadata
 
 **Observation** — An atomic fact attached to an entity. Timestamped and independently searchable.
-- One fact per observation: "The API rate limit was increased from 100 to 500 req/s on 2026-03-15"
+- One fact per observation: "The quarterly revenue increased 15% YoY as of Q1 2026"
 - Embedded separately for fine-grained retrieval
 
 **Relationship** — A typed, weighted, directional edge between two entities.
-- Has a type (e.g. "DEPENDS_ON"), weight (0.0-1.0), and optional properties
+- Has a type (e.g. "DEPENDS_ON", "CITES", "PART_OF"), weight (0.0-1.0), and optional properties
 
 ## Core Entity Types
 
-These entity types form the backbone of the ouroboros pattern:
+These entity types form the backbone of the ouroboros pattern and apply to **every domain**:
 
 - **plan** — What you intend to do (created at session start)
 - **implementation** — What you actually did (created at session end)
@@ -85,16 +89,16 @@ overlay files. These three core types apply regardless of domain.
 **Store** when you:
 - Start a task — create a `plan` entity with steps and goals as observations
 - Learn a new fact, concept, or relationship
-- Make or discover an architectural decision
-- Encounter a person, system, or important artifact
+- Make or discover a decision and its rationale
+- Encounter an important person, system, paper, or artifact
 - Complete a task — create an `implementation` entity linked to the plan
-- Encounter a bug, its root cause, and fix
+- Discover a problem, its root cause, and resolution
 
 **Retrieve** when you:
 - Start a new task or session (warm-start with context)
 - Need to make a decision (check for prior decisions and context)
 - Encounter something that might already be known
-- Need to understand how components relate to each other
+- Need to understand how things relate to each other
 - Want to understand *why* something was done a certain way (search for plans)
 
 **Update** when:
@@ -104,7 +108,7 @@ overlay files. These three core types apply regardless of domain.
 
 **Forget** (delete) when:
 - Information is confirmed wrong or obsolete
-- Entities are no longer relevant to the project
+- Entities are no longer relevant
 
 ## MCP Configuration
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import struct
+import threading
 import time
 from typing import TYPE_CHECKING, Protocol
 
@@ -99,6 +100,7 @@ class EmbeddingEngine:
         self._storage: StorageBackend | None = None
         self._model_loaded = False  # True once _ensure_model_loaded() succeeds
         self._stored_dimension: int | None = None  # Cached from DB metadata
+        self._load_lock = threading.Lock()  # Guards lazy model loading (thread safety for pre-warm)
 
     def set_storage(self, storage: StorageBackend) -> None:
         """Store a storage backend reference for use in subsequent calls."""
@@ -191,29 +193,38 @@ class EmbeddingEngine:
         fast (no model loading), and the heavyweight PyTorch/ONNX import +
         model download happens here on the first ``embed()`` call.
 
+        Thread-safe: a lock ensures only one thread loads the model, even
+        when a background pre-warm thread races with the first ``embed()``
+        call from the async event loop.
+
         If loading fails, ``_available`` is set to ``False`` and an
         ``EmbeddingError`` is raised so callers degrade gracefully.
         """
         if self._model_loaded:
             return
 
-        try:
-            self._load_model()
-            detected_dim = self._detect_dimension()
+        with self._load_lock:
+            # Double-check after acquiring the lock (another thread may have loaded it).
+            if self._model_loaded:
+                return
 
-            # Validate against stored dimension from DB (set during initialize())
-            if self._stored_dimension is not None and self._stored_dimension != detected_dim:
-                raise DimensionMismatchError(self._stored_dimension, detected_dim)
+            try:
+                self._load_model()
+                detected_dim = self._detect_dimension()
 
-            self._dimension = detected_dim
-            self._model_loaded = True
-            log.info("Lazy model load complete (dim=%d)", detected_dim)
-        except (ModelLoadError, DimensionMismatchError):
-            self._available = False
-            raise
-        except (OSError, RuntimeError, ValueError) as exc:
-            self._available = False
-            raise EmbeddingError(f"Lazy model load failed: {exc}") from exc
+                # Validate against stored dimension from DB (set during initialize())
+                if self._stored_dimension is not None and self._stored_dimension != detected_dim:
+                    raise DimensionMismatchError(self._stored_dimension, detected_dim)
+
+                self._dimension = detected_dim
+                self._model_loaded = True
+                log.info("Lazy model load complete (dim=%d)", detected_dim)
+            except (ModelLoadError, DimensionMismatchError):
+                self._available = False
+                raise
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._available = False
+                raise EmbeddingError(f"Lazy model load failed: {exc}") from exc
 
     async def initialize(self, storage: StorageBackend | None = None) -> None:
         """Prepare the embedding engine for use — fast, no model loading.

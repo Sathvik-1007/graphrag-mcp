@@ -29,7 +29,7 @@ I want you to give yourself persistent memory using graphrag-mcp. Run the follow
 pip install graphrag-mcp
 graphrag-mcp install opencode    # or: claude, codex, gemini, cursor, windsurf, amp
 
-This installs a skill file that teaches you how to use the 13 MCP tools.
+This installs a skill file that teaches you how to use the 14 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
@@ -46,7 +46,8 @@ Now start using the knowledge graph:
 1. read_graph() to see current state
 2. search_nodes("relevant topic") to find existing knowledge
 3. add_entities, add_relationships, add_observations as you learn things
-4. At session end, capture anything important you discovered
+4. open_dashboard() to explore the graph visually in your browser
+5. At session end, capture anything important you discovered
 
 Your goal: build a rich knowledge graph of this project so future sessions
 start with full context instead of from zero. Search before adding to avoid
@@ -86,7 +87,8 @@ graphrag-mcp server
 ```bash
 pip install "graphrag-mcp[embeddings]"   # sentence-transformers for local embeddings
 pip install "graphrag-mcp[onnx]"         # ONNX runtime for ~3x faster inference
-pip install "graphrag-mcp[full]"         # both of the above
+pip install "graphrag-mcp[ui]"           # aiohttp for interactive graph visualisation
+pip install "graphrag-mcp[full]"         # all of the above
 ```
 
 ---
@@ -105,7 +107,7 @@ graphrag-mcp install windsurf      # Windsurf
 graphrag-mcp install amp           # Amp
 ```
 
-This writes a skill file that teaches your agent how to use all 13 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
+This writes a skill file that teaches your agent how to use all 14 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
 
 **2. Configure MCP** by adding this to your agent's MCP config:
 
@@ -146,7 +148,7 @@ That's it. Your agent now has persistent memory.
 
 ## Features
 
-graphrag-mcp exposes 13 MCP tools -- six for writing, seven for reading:
+graphrag-mcp exposes 14 MCP tools -- six for writing, seven for reading, and one utility:
 
 ### Write Tools
 
@@ -171,6 +173,12 @@ graphrag-mcp exposes 13 MCP tools -- six for writing, seven for reading:
 | `get_subgraph` | Extract neighborhood around seed entities |
 | `find_paths` | Shortest paths between two entities |
 
+### Utility Tools
+
+| Tool | Description |
+|------|-------------|
+| `open_dashboard` | Launch interactive graph visualisation UI and return its URL |
+
 ---
 
 ## Architecture
@@ -183,6 +191,7 @@ Agent (Claude/Codex/Gemini/OpenCode)
 graphrag-mcp server
   |-- Graph Engine ---- entity/relationship/observation CRUD
   |-- Semantic Engine -- sentence-transformers embeddings + hybrid search
+  |-- UI Server ------- interactive graph explorer (aiohttp + React SPA)
   '-- Storage --------- pluggable backend (SQLite default, .graphrag/graph.db)
 ```
 
@@ -194,9 +203,9 @@ The database file is portable -- copy it between machines, check it into version
 
 ## MCP Integration
 
-graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 13 tools that the agent can call directly.
+graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 14 tools that the agent can call directly.
 
-**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 13 new tools (`add_entities`, `search_nodes`, `find_connections`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 14 new tools (`add_entities`, `search_nodes`, `find_connections`, `open_dashboard`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics (entity count, relationship count, etc.).
 
@@ -316,6 +325,16 @@ graphrag-mcp validate                        # run integrity checks
 
 All management commands accept `--db` and `--project-dir` for targeting a specific database.
 
+### Graph Visualisation UI
+
+```bash
+graphrag-mcp ui                              # open interactive graph explorer
+graphrag-mcp ui --no-open                    # start server without opening browser
+graphrag-mcp ui --port 9090                  # use a specific port
+```
+
+The `open_dashboard` MCP tool also starts this UI server and returns the URL directly to your agent -- no browser auto-open, just a link you can visit when ready.
+
 ---
 
 ## Configuration
@@ -344,7 +363,8 @@ graphrag-mcp is optimized for low-latency, single-user workloads typical of CLI 
 - **WAL mode + PRAGMA tuning** -- concurrent reads with fast writes, optimized journal and cache settings.
 - **ONNX-optimized embeddings** -- ~3x faster inference than default PyTorch, with automatic fallback.
 - **Content-hash embedding cache** -- identical text is never embedded twice.
-- **Lazy model loading** -- the embedding model loads on first search, not on server start.
+- **Background model pre-warming** -- the embedding model loads in a background thread during server startup, so the first search responds fast without blocking or timing out.
+- **Thread-safe lazy loading** -- embedding model initialization uses double-check locking for safe concurrent access.
 - **Memory-mapped I/O** -- large databases stay fast without consuming proportional RAM.
 - **Batch transactions** -- bulk operations (e.g., `add_entities` with 50 items) execute in a single transaction.
 
@@ -389,9 +409,9 @@ pytest -x -q                      # stop on first failure, quiet output
 src/graphrag_mcp/
   __init__.py              # package version
   __main__.py              # python -m graphrag_mcp support
-  server.py                # MCP server entry point and 13 tool definitions
+  server.py                # MCP server entry point and 14 tool definitions
   cli/
-    main.py                # Click CLI: server, init, status, export, import, validate
+    main.py                # Click CLI: server, init, status, export, import, validate, ui
     install.py             # Skill installer for 7 agent types
   db/
     connection.py          # Database class (aiosqlite, WAL, PRAGMA tuning)
@@ -411,6 +431,10 @@ src/graphrag_mcp/
   storage/
     base.py                # StorageBackend ABC (~37 abstract methods)
     sqlite_backend.py      # SQLiteBackend -- reference implementation
+  ui/
+    server.py              # aiohttp web server for graph visualisation
+    routes.py              # REST API route handlers
+    frontend/              # Pre-built React SPA (Sigma.js graph explorer)
   utils/
     config.py              # Environment-variable-based Config dataclass
     errors.py              # 14-class exception hierarchy

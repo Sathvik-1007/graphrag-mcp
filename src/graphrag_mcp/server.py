@@ -1,4 +1,4 @@
-"""FastMCP server — registers all 13 Graph-RAG MCP tools.
+"""FastMCP server — registers all 14 Graph-RAG MCP tools.
 
 This is the core entry point.  A lifespan context manager initialises
 shared state (storage backend, engines, search) once at startup and
@@ -12,6 +12,8 @@ to instantiate the configured backend (SQLite, Neo4j, Memgraph, etc.).
 
 from __future__ import annotations
 
+import socket
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -52,6 +54,9 @@ class AppState:
     merger: EntityMerger | None = None
     embeddings: EmbeddingEngine | None = None
     search: HybridSearch | None = None
+    # UI dashboard state (managed by open_dashboard tool)
+    _ui_url: str | None = None
+    _ui_runner: Any | None = None
 
 
 @dataclass
@@ -130,6 +135,19 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
     # first embed() call, keeping MCP startup fast (< 2 seconds).
     await embeddings.initialize(storage)
 
+    # Pre-warm: load the embedding model in a background thread so the first
+    # search_nodes call doesn't block for 30+ seconds (which would exceed
+    # typical MCP client timeouts like OpenCode's 30 000 ms default).
+    def _prewarm() -> None:
+        try:
+            embeddings._ensure_model_loaded()
+            log.info("Embedding model pre-warmed successfully in background thread")
+        except Exception:
+            log.warning("Background model pre-warm failed — will retry on first use", exc_info=True)
+
+    prewarm_thread = threading.Thread(target=_prewarm, daemon=True, name="embedding-prewarm")
+    prewarm_thread.start()
+
     graph = GraphEngine(storage)
     traversal = GraphTraversal(storage)
     merger = EntityMerger(storage)
@@ -152,6 +170,14 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
 
     # Shutdown
     log.info("Shutting down graphrag-mcp server")
+    # Clean up UI dashboard server if running
+    if _state._ui_runner is not None:
+        try:
+            await _state._ui_runner.cleanup()
+        except Exception:
+            log.debug("UI runner cleanup error (ignored)", exc_info=True)
+        _state._ui_runner = None
+        _state._ui_url = None
     await storage.close()
     _state.storage = None
     _state.graph = None
@@ -752,6 +778,96 @@ async def find_paths(
 
     except GraphRAGError as exc:
         return _error_response(exc, tool_name="find_paths")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dashboard / UI
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+async def open_dashboard(
+    host: str = "127.0.0.1",
+    port: int = 0,
+) -> dict[str, Any]:
+    """Launch the interactive graph-visualisation dashboard and return its URL.
+
+    Starts a lightweight web server that serves a React-based graph explorer
+    backed by the same knowledge graph the MCP server manages.  If the
+    dashboard is already running, the existing URL is returned immediately.
+
+    The dashboard is read-only and runs on ``localhost`` by default.
+    Open the returned URL in any browser to explore the graph visually.
+
+    Requires the ``[ui]`` optional dependency (``pip install graphrag-mcp[ui]``).
+
+    Args:
+        host: Bind address (default ``127.0.0.1`` — local only).
+        port: Port number.  ``0`` (default) auto-selects a free port.
+    """
+    try:
+        # Already running? Return existing URL.
+        if _state._ui_url is not None:
+            return {
+                "url": _state._ui_url,
+                "status": "already_running",
+                "message": f"Dashboard is already running at {_state._ui_url}",
+            }
+
+        state = _require_state()
+
+        # Lazy-import aiohttp (optional dependency)
+        try:
+            from aiohttp import web as aio_web
+        except ImportError:
+            return {
+                "error": True,
+                "error_type": "MissingDependency",
+                "message": (
+                    "The UI dependency 'aiohttp' is not installed. "
+                    "Install it with: pip install graphrag-mcp[ui]"
+                ),
+            }
+
+        from graphrag_mcp.ui.server import create_app
+
+        app = await create_app(state.storage, state.search)
+
+        runner = aio_web.AppRunner(app)
+        await runner.setup()
+
+        # Auto-select a free port if port == 0
+        resolved_port = port
+        if resolved_port == 0:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind((host, 0))
+            resolved_port = sock.getsockname()[1]
+            sock.close()
+
+        site = aio_web.TCPSite(runner, host, resolved_port)
+        await site.start()
+
+        url = f"http://{host}:{resolved_port}"
+        _state._ui_url = url
+        _state._ui_runner = runner
+
+        log.info("Dashboard started at %s", url)
+
+        return {
+            "url": url,
+            "status": "started",
+            "message": f"Dashboard is now running at {url}",
+        }
+
+    except GraphRAGError as exc:
+        return _error_response(exc, tool_name="open_dashboard")
+    except Exception as exc:
+        log.exception("Failed to start dashboard")
+        return {
+            "error": True,
+            "error_type": type(exc).__name__,
+            "message": f"Failed to start dashboard: {exc}",
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════

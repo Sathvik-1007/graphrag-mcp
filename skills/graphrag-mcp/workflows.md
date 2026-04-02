@@ -12,30 +12,29 @@ Before diving into any task, warm-start your memory and store the plan:
 4. `find_connections` if you need to understand how things relate — Explore the neighbourhood
 
 **Why this matters:** Without recall, you start every session cold. Prior decisions,
-architecture knowledge, and lessons learned are lost. The graph is your long-term memory —
-use it.
+context, and lessons learned are lost. The graph is your long-term memory — use it.
 
 ### Step 2: Store the plan
 
-Before writing any code or doing any work, store your plan in the graph:
+Before doing any work, store your plan in the graph:
 
 1. `add_entities` — Create a plan entity:
-   - **name**: Descriptive name (e.g. "Plan: Implement Auth Service", "Plan: Refactor Search Pipeline")
+   - **name**: Descriptive name (e.g. "Plan: Redesign Search Pipeline", "Plan: Literature Review on Transformer Architectures", "Plan: Quarterly Strategy Analysis")
    - **type**: `plan`
    - **description**: One-paragraph summary of what you intend to do and why
 2. `add_observations` on the plan entity — One observation per planned step or goal:
-   - "Step 1: Add OAuth2 provider configuration to settings module"
-   - "Step 2: Create token validation middleware"
-   - "Goal: All existing tests must continue to pass"
-   - "Constraint: No new external dependencies"
+   - "Step 1: Identify all papers citing the original attention paper from 2017"
+   - "Step 2: Categorize by approach — sparse attention, linear attention, hybrid"
+   - "Goal: Produce a comparison table with strengths and weaknesses"
+   - "Constraint: Focus on papers from 2023-2026 only"
 3. `add_relationships` — Link the plan to related entities:
-   - `plan TARGETS module` — What the plan will modify
+   - `plan TARGETS entity` — What the plan will examine or modify
    - `plan FOLLOWS_FROM decision` — What decision led to this plan
-   - `plan ADDRESSES bug` — What problem this plan solves
+   - `plan ADDRESSES problem` — What problem this plan solves
 
-**Why store the plan?** Future sessions can search for plans to understand *why* code
-was written a certain way. Plans also serve as acceptance criteria — at session end,
-compare what you did against what you planned.
+**Why store the plan?** Future sessions can search for plans to understand *why* work
+was done. Plans also serve as acceptance criteria — at session end, compare what you
+did against what you planned.
 
 ## During Work — Continuous Memory
 
@@ -44,10 +43,10 @@ As you work, maintain the graph. Don't batch everything to the end — update as
 ### When to store (do this immediately, not later)
 
 - **You make a decision** → `add_entities` with type `decision`, include rationale as an observation
-- **You discover architecture** → `add_entities` for the component + `add_relationships` for dependencies
+- **You discover structure** → `add_entities` for the concept + `add_relationships` for connections
 - **You learn a new fact** → `add_observations` on the relevant entity
-- **You encounter a bug** → `add_entities` with type `bug`, add root cause and fix as observations
-- **You complete a milestone** → `add_observations` on the plan entity ("Completed: Step 2 — token validation middleware")
+- **You encounter a problem** → `add_entities` with type `problem`, add root cause and resolution as observations
+- **You complete a milestone** → `add_observations` on the plan entity ("Completed: Step 2 — categorized 47 papers")
 - **You deviate from the plan** → `add_observations` on the plan entity explaining why and what changed
 
 ### When to update
@@ -77,18 +76,18 @@ Before ending a session, do a memory sweep and record what was actually done:
 Store the implementation result alongside the plan:
 
 1. `add_entities` — Create an implementation entity:
-   - **name**: Match the plan name (e.g. "Implementation: Implement Auth Service")
+   - **name**: Match the plan name (e.g. "Implementation: Redesign Search Pipeline")
    - **type**: `implementation`
-   - **description**: Summary of what was actually built, including any deviations from the plan
+   - **description**: Summary of what was actually done, including any deviations from the plan
 2. `add_observations` on the implementation entity — Key outcomes:
-   - "Added OAuth2 provider in src/auth/providers.py with Google and GitHub support"
-   - "Created TokenValidator middleware in src/auth/middleware.py"
-   - "All 313 tests pass. Added 12 new tests for auth flows."
-   - "Deviated from plan: used jose library instead of PyJWT for JWKS support"
+   - "Reviewed 47 papers on efficient attention mechanisms from 2023-2026"
+   - "Produced comparison table covering 6 categories of approaches"
+   - "Key finding: linear attention methods sacrifice quality for speed in long-context scenarios"
+   - "Deviated from plan: expanded scope to include 2022 papers that introduced key techniques"
 3. `add_relationships` — Link implementation to plan and affected entities:
    - `implementation IMPLEMENTS plan` — Links what was done to what was planned
-   - `implementation MODIFIES module` — What was changed
-   - `implementation INTRODUCES dependency` — New dependencies added
+   - `implementation MODIFIES entity` — What was changed or enriched
+   - `implementation INTRODUCES entity` — New entities discovered during work
 
 ### Step 3: Final verification
 
@@ -124,7 +123,7 @@ When you find two entities that represent the same thing:
 For **specific facts** (dates, numbers, exact events):
 - Use `search_observations` — It searches observation text directly
 
-For **concepts and entities** (people, systems, decisions):
+For **concepts and entities** (people, systems, decisions, papers):
 - Use `search_nodes` — It searches entity names, types, and descriptions, boosted by matching observations
 
 For **relationships and structure** (how things connect):

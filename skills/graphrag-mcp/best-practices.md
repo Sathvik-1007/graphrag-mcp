@@ -2,14 +2,13 @@
 
 ## The Ouroboros Pattern
 
-When you're working on a project that uses graphrag-mcp, the graph should document the
-project itself — including the decisions about how to use the graph. This self-referential
-pattern means:
+The graph should document the work, and the work should maintain the graph. This
+self-referential pattern means:
 
-- Store project architecture as entities and relationships
-- Record design decisions with rationale as observations
-- Track which domain overlay you're using and why
-- Update the graph when the project evolves
+- Store key concepts, entities, and relationships as you discover them
+- Record decisions with rationale as observations
+- Track which domain you're working in and what matters most
+- Update the graph when understanding evolves
 - **Store plans before work begins and implementations after work ends**
 
 The graph eats its own tail: it documents the work, and the work maintains the graph.
@@ -42,25 +41,26 @@ makes the graph genuinely useful across long-running projects.
 
 ## Granularity Guidelines
 
-**Too granular**: Don't create entities for every variable, function parameter, or config key.
-Store things at the level you'd want to recall them — services, decisions, people, concepts.
+**Too granular**: Don't create entities for every minor detail. Store things at the level
+you'd want to recall them — systems, decisions, people, concepts, key findings.
 
 **Too coarse**: Don't create one entity per project with all facts as observations.
 Break knowledge into meaningful, searchable units.
 
-**Right level**: One entity per architectural boundary, major decision, person, system,
-or concept. Observations are the details — dates, metrics, rationale, quotes.
+**Right level**: One entity per significant concept, decision, person, system, or
+milestone. Observations capture the details — dates, metrics, rationale, quotes.
 
 ## Anti-Patterns
 
-**Stale descriptions**: An entity description that says "handles auth" when the service was
-rewritten to handle billing is worse than no description. Update or delete stale entities.
+**Stale descriptions**: An entity description that no longer reflects reality is worse
+than no description. Update or delete stale entities.
 
 **Search without reading**: `search_nodes` returns summaries. Always follow up with
 `get_entity` to see the full picture including observations before making decisions.
 
-**Storing file contents**: Observations should be facts about code, not the code itself.
-"AuthService uses bcrypt for password hashing" is useful. Pasting the entire file is not.
+**Storing raw content**: Observations should be facts *about* content, not the content itself.
+"The paper introduces a novel attention mechanism that reduces quadratic complexity to linear"
+is useful. Pasting the entire abstract is not.
 
 **Write-once mentality**: The graph is not an append-only log. Update descriptions,
 merge duplicates, delete stale entities. A maintained graph is worth 10x an abandoned one.
@@ -76,7 +76,7 @@ intent makes it impossible to understand design decisions in future sessions.
 
 ## When NOT to Store
 
-- Transient debugging information (stack traces, temporary test data)
-- Information that changes every session (current file being edited)
-- Things better handled by version control (code history, diffs)
-- Personal preferences or ephemeral context (your current mood about the codebase)
+- Transient working context (scratch calculations, temporary exploration)
+- Information that changes every session (current file being edited, current tab open)
+- Things better handled by other tools (code diffs in version control, chat logs)
+- Speculative or uncertain information without marking it as such
