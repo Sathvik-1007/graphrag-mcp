@@ -25,15 +25,20 @@ from graph_mem.server import (
     add_observations,
     add_relationships,
     delete_entities,
+    delete_observations,
+    delete_relationships,
     find_connections,
     find_paths,
     get_entity,
     get_subgraph,
+    list_entities,
     merge_entities,
     read_graph,
     search_nodes,
     search_observations,
     update_entity,
+    update_observation,
+    update_relationship,
 )
 from graph_mem.utils.config import Config
 
@@ -479,3 +484,271 @@ async def test_search_observations_tool(setup_server):
     result = await search_observations(query="rate limit", limit=5)
     assert "results" in result
     assert result["count"] >= 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# delete_relationships
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_delete_relationships_tool(setup_server):
+    """delete_relationships removes edges between named entities."""
+    await add_entities(
+        [
+            {"name": "DR_A", "entity_type": "person"},
+            {"name": "DR_B", "entity_type": "person"},
+        ]
+    )
+    await add_relationships(
+        [
+            {"source": "DR_A", "target": "DR_B", "relationship_type": "knows"},
+        ]
+    )
+    result = await delete_relationships("DR_A", "DR_B", "knows")
+    assert result["deleted"] == 1
+    assert result["status"] == "deleted"
+
+
+async def test_delete_relationships_all_types(setup_server):
+    """delete_relationships without type removes all edges between the pair."""
+    await add_entities(
+        [
+            {"name": "DR_X", "entity_type": "concept"},
+            {"name": "DR_Y", "entity_type": "concept"},
+        ]
+    )
+    await add_relationships(
+        [
+            {"source": "DR_X", "target": "DR_Y", "relationship_type": "relates_to"},
+            {"source": "DR_X", "target": "DR_Y", "relationship_type": "depends_on"},
+        ]
+    )
+    result = await delete_relationships("DR_X", "DR_Y")
+    assert result["deleted"] == 2
+
+
+async def test_delete_relationships_not_found(setup_server):
+    """delete_relationships returns error for non-existent entities."""
+    result = await delete_relationships("NoSuchA", "NoSuchB")
+    assert result.get("error") is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# update_relationship
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_update_relationship_weight(setup_server):
+    """update_relationship can change the weight of an edge."""
+    await add_entities(
+        [
+            {"name": "UR_A", "entity_type": "person"},
+            {"name": "UR_B", "entity_type": "person"},
+        ]
+    )
+    await add_relationships(
+        [
+            {"source": "UR_A", "target": "UR_B", "relationship_type": "knows", "weight": 0.5},
+        ]
+    )
+    result = await update_relationship("UR_A", "UR_B", "knows", new_weight=0.9)
+    assert result["status"] == "updated"
+    assert result["source"] == "UR_A"
+    assert result["target"] == "UR_B"
+
+
+async def test_update_relationship_type(setup_server):
+    """update_relationship can change the relationship type."""
+    await add_entities(
+        [
+            {"name": "URT_A", "entity_type": "concept"},
+            {"name": "URT_B", "entity_type": "concept"},
+        ]
+    )
+    await add_relationships(
+        [
+            {"source": "URT_A", "target": "URT_B", "relationship_type": "relates_to"},
+        ]
+    )
+    result = await update_relationship("URT_A", "URT_B", "relates_to", new_type="depends_on")
+    assert result["status"] == "updated"
+    assert result["relationship_type"] == "depends_on"
+
+
+async def test_update_relationship_properties(setup_server):
+    """update_relationship can merge properties."""
+    await add_entities(
+        [
+            {"name": "URP_A", "entity_type": "concept"},
+            {"name": "URP_B", "entity_type": "concept"},
+        ]
+    )
+    await add_relationships(
+        [
+            {
+                "source": "URP_A",
+                "target": "URP_B",
+                "relationship_type": "uses",
+                "properties": {"since": "2024"},
+            },
+        ]
+    )
+    result = await update_relationship("URP_A", "URP_B", "uses", properties={"version": "2.0"})
+    assert result["status"] == "updated"
+
+
+async def test_update_relationship_not_found(setup_server):
+    """update_relationship returns error for non-existent relationship."""
+    await add_entities(
+        [
+            {"name": "URN_A", "entity_type": "person"},
+            {"name": "URN_B", "entity_type": "person"},
+        ]
+    )
+    result = await update_relationship("URN_A", "URN_B", "nonexistent")
+    assert result.get("error") is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# delete_observations
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_delete_observations_tool(setup_server):
+    """delete_observations removes specific observations from an entity."""
+    await add_entities([{"name": "DO_Ent", "entity_type": "concept"}])
+    add_result = await add_observations("DO_Ent", ["fact A", "fact B", "fact C"])
+    obs_ids = [r["id"] for r in add_result["results"]]
+
+    # Delete the first two
+    result = await delete_observations("DO_Ent", obs_ids[:2])
+    assert result["deleted"] == 2
+    assert result["status"] == "deleted"
+
+    # Verify only one remains
+    entity_data = await get_entity("DO_Ent")
+    assert len(entity_data["observations"]) == 1
+    assert entity_data["observations"][0]["content"] == "fact C"
+
+
+async def test_delete_observations_wrong_entity(setup_server):
+    """delete_observations skips IDs that don't belong to the entity."""
+    await add_entities(
+        [
+            {"name": "DO_E1", "entity_type": "concept"},
+            {"name": "DO_E2", "entity_type": "concept"},
+        ]
+    )
+    add1 = await add_observations("DO_E1", ["owned by E1"])
+    obs_id = add1["results"][0]["id"]
+
+    # Try to delete E1's observation from E2
+    result = await delete_observations("DO_E2", [obs_id])
+    assert result["deleted"] == 0
+
+
+async def test_delete_observations_not_found(setup_server):
+    """delete_observations returns error for non-existent entity."""
+    result = await delete_observations("NonExistent", ["fake-id"])
+    assert result.get("error") is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# update_observation
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_update_observation_tool(setup_server):
+    """update_observation changes content in-place."""
+    await add_entities([{"name": "UO_Ent", "entity_type": "concept"}])
+    add_result = await add_observations("UO_Ent", ["original text"])
+    obs_id = add_result["results"][0]["id"]
+
+    result = await update_observation("UO_Ent", obs_id, "updated text")
+    assert result["old_content"] == "original text"
+    assert result["new_content"] == "updated text"
+
+    # Verify the update persisted
+    entity_data = await get_entity("UO_Ent")
+    assert entity_data["observations"][0]["content"] == "updated text"
+
+
+async def test_update_observation_wrong_entity(setup_server):
+    """update_observation rejects IDs that don't belong to the entity."""
+    await add_entities(
+        [
+            {"name": "UO_E1", "entity_type": "concept"},
+            {"name": "UO_E2", "entity_type": "concept"},
+        ]
+    )
+    add1 = await add_observations("UO_E1", ["belongs to E1"])
+    obs_id = add1["results"][0]["id"]
+
+    result = await update_observation("UO_E2", obs_id, "hijacked")
+    assert result.get("error") is True
+
+
+async def test_update_observation_not_found(setup_server):
+    """update_observation returns error for non-existent observation."""
+    await add_entities([{"name": "UON_Ent", "entity_type": "concept"}])
+    result = await update_observation("UON_Ent", "fake-obs-id", "new text")
+    assert result.get("error") is True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# list_entities
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_list_entities_tool(setup_server):
+    """list_entities returns paginated entity list."""
+    await add_entities(
+        [
+            {"name": "LE_A", "entity_type": "person"},
+            {"name": "LE_B", "entity_type": "person"},
+            {"name": "LE_C", "entity_type": "concept"},
+        ]
+    )
+    result = await list_entities()
+    assert result["count"] == 3
+    assert result["total"] == 3
+    names = {e["name"] for e in result["results"]}
+    assert names == {"LE_A", "LE_B", "LE_C"}
+
+
+async def test_list_entities_filter_type(setup_server):
+    """list_entities filters by entity_type."""
+    await add_entities(
+        [
+            {"name": "LT_A", "entity_type": "person"},
+            {"name": "LT_B", "entity_type": "concept"},
+            {"name": "LT_C", "entity_type": "person"},
+        ]
+    )
+    result = await list_entities(entity_type="person")
+    assert result["count"] == 2
+    names = {e["name"] for e in result["results"]}
+    assert names == {"LT_A", "LT_C"}
+
+
+async def test_list_entities_pagination(setup_server):
+    """list_entities supports limit and offset."""
+    await add_entities([{"name": f"LP_{i}", "entity_type": "concept"} for i in range(5)])
+    result = await list_entities(limit=2, offset=0)
+    assert result["count"] == 2
+    assert result["total"] == 5
+
+    result2 = await list_entities(limit=2, offset=2)
+    assert result2["count"] == 2
+
+    # No overlap
+    names1 = {e["name"] for e in result["results"]}
+    names2 = {e["name"] for e in result2["results"]}
+    assert names1.isdisjoint(names2)
+
+
+async def test_list_entities_empty(setup_server):
+    """list_entities returns empty list when no entities exist."""
+    result = await list_entities()
+    assert result["count"] == 0
+    assert result["results"] == []

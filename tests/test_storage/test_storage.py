@@ -152,6 +152,12 @@ def test_register_and_use_custom_backend():
         async def count_observations(self):
             return 0
 
+        async def delete_observation(self, obs_id):
+            return False
+
+        async def update_observation(self, obs_id, content):
+            return False
+
         async def upsert_entity_embedding(self, entity_id, embedding):
             pass
 

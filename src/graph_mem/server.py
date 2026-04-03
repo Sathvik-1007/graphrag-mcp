@@ -1,4 +1,4 @@
-"""FastMCP server — registers all 14 Graph Memory MCP tools.
+"""FastMCP server — registers all 19 Graph Memory MCP tools.
 
 This is the core entry point.  A lifespan context manager initialises
 shared state (storage backend, engines, search) once at startup and
@@ -278,7 +278,7 @@ async def _embed_observations(obs_results: list[ObservationResult]) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# WRITE TOOLS (6)
+# WRITE TOOLS (10)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -546,8 +546,164 @@ async def merge_entities(
         return _error_response(exc, tool_name="merge_entities")
 
 
+@mcp.tool()
+async def delete_relationships(
+    source: str,
+    target: str,
+    relationship_type: str | None = None,
+) -> dict[str, Any]:
+    """Remove relationships between two entities by name.
+
+    Deletes matching edges from source to target. If relationship_type is
+    provided, only relationships of that type are deleted. Otherwise all
+    relationships between the pair are removed.
+
+    Args:
+        source: Source entity name.
+        target: Target entity name.
+        relationship_type: Optional — restrict deletion to this edge type.
+
+    Returns:
+        Count of relationships deleted.
+    """
+    try:
+        state = _require_state()
+
+        deleted = await state.graph.delete_relationships(source, target, relationship_type)
+
+        return {
+            "source": source,
+            "target": target,
+            "relationship_type": relationship_type,
+            "deleted": deleted,
+            "status": "deleted" if deleted > 0 else "not_found",
+        }
+
+    except GraphMemError as exc:
+        return _error_response(exc, tool_name="delete_relationships")
+
+
+@mcp.tool()
+async def update_relationship(
+    source: str,
+    target: str,
+    relationship_type: str,
+    new_weight: float | None = None,
+    new_type: str | None = None,
+    properties: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update an existing relationship between two entities in-place.
+
+    Modifies weight, type, or properties of an existing edge without
+    deleting and re-creating it. Properties are merged (new keys added,
+    existing keys overwritten).
+
+    Args:
+        source: Source entity name.
+        target: Target entity name.
+        relationship_type: Current relationship type to identify the edge.
+        new_weight: Optional new weight value (0.0-1.0).
+        new_type: Optional new relationship type string.
+        properties: Optional properties dict to merge into existing properties.
+    """
+    try:
+        state = _require_state()
+
+        result = await state.graph.update_relationship(
+            source,
+            target,
+            relationship_type,
+            new_weight=new_weight,
+            new_type=new_type,
+            properties=properties,
+        )
+
+        return result
+
+    except GraphMemError as exc:
+        return _error_response(exc, tool_name="update_relationship")
+
+
+@mcp.tool()
+async def delete_observations(
+    entity_name: str,
+    observation_ids: list[str],
+) -> dict[str, Any]:
+    """Remove specific observations from an entity by observation ID.
+
+    Validates that the observations belong to the specified entity before
+    deleting. Also cleans up associated embeddings.
+
+    Args:
+        entity_name: Name of the entity the observations belong to.
+        observation_ids: List of observation IDs to delete.
+
+    Returns:
+        Count of observations actually deleted.
+    """
+    try:
+        state = _require_state()
+
+        deleted = await state.graph.delete_observations(entity_name, observation_ids)
+
+        # Clean up observation embeddings
+        if state.embeddings.available:
+            for obs_id in observation_ids:
+                try:
+                    await state.embeddings.delete_observation_embedding(obs_id)
+                except GraphMemError:
+                    log.debug("Failed to clean embedding for obs %s", obs_id)
+
+        return {
+            "entity_name": entity_name,
+            "deleted": deleted,
+            "requested": len(observation_ids),
+            "status": "deleted" if deleted > 0 else "not_found",
+        }
+
+    except GraphMemError as exc:
+        return _error_response(exc, tool_name="delete_observations")
+
+
+@mcp.tool()
+async def update_observation(
+    entity_name: str,
+    observation_id: str,
+    content: str,
+) -> dict[str, Any]:
+    """Update the text content of an existing observation in-place.
+
+    Modifies the observation content directly — does not delete and re-create.
+    Recomputes the embedding for the updated content automatically.
+
+    Args:
+        entity_name: Name of the entity the observation belongs to.
+        observation_id: ID of the observation to update.
+        content: New text content for the observation.
+    """
+    try:
+        state = _require_state()
+
+        result = await state.graph.update_observation(entity_name, observation_id, content)
+
+        # Recompute embedding for updated content
+        if state.embeddings.available:
+            obs_results = [{"id": observation_id, "content": content}]
+            await _embed_observations(obs_results)
+
+        return result
+
+    except GraphMemError as exc:
+        return _error_response(exc, tool_name="update_observation")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
-# READ TOOLS (7)
+# WRITE TOOLS (10)  |  READ TOOLS (8)  |  UTILITY (1) — 19 total
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# READ TOOLS (8)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -778,6 +934,55 @@ async def find_paths(
 
     except GraphMemError as exc:
         return _error_response(exc, tool_name="find_paths")
+
+
+@mcp.tool()
+async def list_entities(
+    entity_type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """List all entities in the knowledge graph with optional filtering.
+
+    Browse entities with pagination support. Useful for discovering what's
+    in the graph without a specific search query, or for iterating over
+    entities of a specific type.
+
+    Args:
+        entity_type: Optional — filter to only this entity type (e.g. 'person').
+        limit: Maximum entities to return (default 100, max 500).
+        offset: Skip this many entities for pagination (default 0).
+
+    Returns:
+        List of entity summaries with name, type, description, and counts.
+    """
+    try:
+        state = _require_state()
+
+        # Clamp limit to prevent excessive queries
+        limit = min(max(1, limit), 500)
+        offset = max(0, offset)
+
+        entities = await state.graph.list_entities(
+            entity_type=entity_type,
+            limit=limit,
+            offset=offset,
+        )
+
+        results = [e.to_dict() for e in entities]
+        total = await state.storage.count_entities()
+
+        return {
+            "results": results,
+            "count": len(results),
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "entity_type": entity_type,
+        }
+
+    except GraphMemError as exc:
+        return _error_response(exc, tool_name="list_entities")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

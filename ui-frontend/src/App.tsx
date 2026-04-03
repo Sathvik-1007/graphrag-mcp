@@ -49,10 +49,10 @@ export default function App() {
     clearEntity();
   }, [clearEntity]);
 
-  const handleSearchSelect = useCallback(
+  // Navigate to entity: select + center canvas (used by search, detail panel, manage panel)
+  const handleNavigateToEntity = useCallback(
     (name: string) => {
       void selectEntity(name);
-      // Focus the canvas on the selected node
       canvasRef.current?.focusNode(name);
     },
     [selectEntity],
@@ -159,7 +159,7 @@ export default function App() {
         graphEntities={state.graph?.entities ?? []}
         onSearch={search}
         onClearSearch={clearSearch}
-        onSelectResult={handleSearchSelect}
+        onSelectResult={handleNavigateToEntity}
         entityTypes={entityTypes}
         visibleEntityTypes={state.visibleEntityTypes}
         onToggleType={toggleEntityType}
@@ -180,7 +180,7 @@ export default function App() {
       <DetailPanel
         entity={state.selectedEntity}
         onClose={handleDeselectNode}
-        onNavigate={handleSelectNode}
+        onNavigate={handleNavigateToEntity}
         onUpdateEntity={handleUpdateEntity}
         onDeleteEntity={handleDeleteEntity}
         allEntityNames={allEntityNames}

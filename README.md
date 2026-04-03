@@ -61,7 +61,7 @@ I want you to give yourself persistent memory using graph-mem. Run the following
 pip install graph-mem
 graph-mem install opencode    # or: claude, cursor, windsurf, codex, gemini, copilot, amp, kiro, roocode, trae, augment, continue, warp, kilocode, qoder, codebuddy, droid, antigravity
 
-This installs a skill file that teaches you how to use the 14 MCP tools.
+This installs a skill file that teaches you how to use the 19 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
@@ -78,8 +78,9 @@ Now start using the knowledge graph:
 1. read_graph() to see current state
 2. search_nodes("relevant topic") to find existing knowledge
 3. add_entities, add_relationships, add_observations as you learn things
-4. open_dashboard() to explore the graph visually in your browser
-5. At session end, capture anything important you discovered
+4. update_observation / update_relationship to fix mistakes in-place
+5. open_dashboard() to explore the graph visually in your browser
+6. At session end, capture anything important you discovered
 
 Your goal: build a rich knowledge graph of this project so future sessions
 start with full context instead of from zero. Search before adding to avoid
@@ -151,7 +152,7 @@ graph-mem install droid         # Droid (Factory)
 graph-mem install antigravity   # Antigravity
 ```
 
-This writes a skill file that teaches your agent how to use all 14 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
+This writes a skill file that teaches your agent how to use all 19 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
 
 **2. Configure MCP** by adding this to your agent's MCP config:
 
@@ -192,32 +193,37 @@ That's it. Your agent now has persistent memory.
 
 ## Features
 
-graph-mem exposes 14 MCP tools -- six for writing, seven for reading, and one utility:
+graph-mem exposes **19 MCP tools** -- ten for writing, eight for reading, and one utility. Full CRUD on every primitive: entities, relationships, and observations can all be created, read, updated, and deleted.
 
-### Write Tools
-
-| Tool | Description |
-|------|-------------|
-| `add_entities` | Batch-create entities with optional observations |
-| `add_relationships` | Create typed, directed edges between entities |
-| `add_observations` | Attach factual statements to entities |
-| `update_entity` | Modify entity description, properties, or type |
-| `delete_entities` | Remove entities with cascade to relationships and observations |
-| `merge_entities` | Combine duplicate entities into one |
-
-### Read Tools
+### Write Tools (10)
 
 | Tool | Description |
 |------|-------------|
-| `search_nodes` | Hybrid semantic + full-text search with RRF fusion |
-| `search_observations` | Semantic search directly over observations |
-| `find_connections` | Multi-hop graph traversal between entities |
-| `get_entity` | Full entity details with observations and relationships |
-| `read_graph` | Graph statistics overview |
-| `get_subgraph` | Extract neighborhood around seed entities |
-| `find_paths` | Shortest paths between two entities |
+| `add_entities` | Batch-create entities with optional observations; auto-merges on name conflict |
+| `add_relationships` | Create typed, directed edges between entities; merges duplicates by max weight |
+| `add_observations` | Attach factual statements to entities with optional source provenance |
+| `update_entity` | Modify entity description, properties, or type in-place |
+| `update_relationship` | Change weight, type, or properties of an existing edge without delete+re-create |
+| `update_observation` | Edit observation text content in-place with automatic embedding recompute |
+| `delete_entities` | Remove entities with cascade to relationships, observations, and embeddings |
+| `delete_relationships` | Remove specific edges between entities, optionally filtered by type |
+| `delete_observations` | Remove specific observations by ID with ownership validation |
+| `merge_entities` | Combine duplicate entities: moves observations and relationships, deduplicates edges |
 
-### Utility Tools
+### Read Tools (8)
+
+| Tool | Description |
+|------|-------------|
+| `search_nodes` | Hybrid semantic + full-text search with RRF fusion ranking |
+| `search_observations` | Semantic search directly over observation text content |
+| `find_connections` | Multi-hop BFS graph traversal with direction and type filters |
+| `get_entity` | Full entity details with all observations and relationships |
+| `list_entities` | Browse/paginate all entities with optional type filter |
+| `read_graph` | Graph statistics: counts, type distributions, most-connected entities |
+| `get_subgraph` | Extract neighborhood subgraph around seed entities |
+| `find_paths` | Find shortest paths between two entities via BFS |
+
+### Utility Tools (1)
 
 | Tool | Description |
 |------|-------------|
@@ -227,27 +233,94 @@ graph-mem exposes 14 MCP tools -- six for writing, seven for reading, and one ut
 
 ## Architecture
 
+### System Overview
+
 ```mermaid
 graph TB
-    Agent["LLM Agent<br/>(Claude · Cursor · Windsurf · OpenCode · Gemini · ...)"]
-    MCP["MCP Protocol<br/>(stdio / SSE / streamable-http)"]
-    Server["graph-mem server"]
-    Graph["Graph Engine<br/>Entity · Relationship · Observation CRUD"]
-    Semantic["Semantic Engine<br/>sentence-transformers + hybrid search"]
-    UI["UI Server<br/>Interactive graph explorer (aiohttp + React SPA)"]
-    Storage["Storage Backend<br/>SQLite WAL · .graphmem/graph.db"]
+    subgraph Agents["Any MCP-Compatible Agent"]
+        A1["Claude Code"]
+        A2["OpenCode"]
+        A3["Cursor"]
+        A4["Gemini CLI"]
+        A5["19 others..."]
+    end
 
-    Agent -->|"tool calls"| MCP
-    MCP --> Server
-    Server --> Graph
-    Server --> Semantic
-    Server --> UI
-    Graph --> Storage
-    Semantic --> Storage
+    subgraph Transport["MCP Transport Layer"]
+        STDIO["stdio<br/>(default)"]
+        SSE["SSE"]
+        HTTP["streamable-http"]
+    end
 
-    style Agent fill:#6366f1,stroke:#4f46e5,color:#fff
+    subgraph Server["graph-mem Server"]
+        direction TB
+        subgraph WriteTools["Write Tools (10)"]
+            WT1["add_entities"]
+            WT2["add_relationships"]
+            WT3["add_observations"]
+            WT4["update_entity"]
+            WT5["update_relationship"]
+            WT6["update_observation"]
+            WT7["delete_entities"]
+            WT8["delete_relationships"]
+            WT9["delete_observations"]
+            WT10["merge_entities"]
+        end
+        subgraph ReadTools["Read Tools (8)"]
+            RT1["search_nodes"]
+            RT2["search_observations"]
+            RT3["find_connections"]
+            RT4["get_entity"]
+            RT5["list_entities"]
+            RT6["read_graph"]
+            RT7["get_subgraph"]
+            RT8["find_paths"]
+        end
+        subgraph Utility["Utility (1)"]
+            UT1["open_dashboard"]
+        end
+    end
+
+    subgraph Engines["Core Engines"]
+        GE["GraphEngine<br/>CRUD + resolution"]
+        SE["HybridSearch<br/>vector + FTS5 + RRF"]
+        EE["EmbeddingEngine<br/>sentence-transformers"]
+        GT["GraphTraversal<br/>BFS + pathfinding"]
+        EM["EntityMerger<br/>dedup + consolidate"]
+    end
+
+    subgraph Storage["SQLite Storage Layer"]
+        DB["SQLite WAL<br/>.graphmem/graph.db"]
+        VEC["sqlite-vec<br/>vector index"]
+        FTS["FTS5<br/>full-text index"]
+        MIG["Versioned migrations"]
+    end
+
+    subgraph Dashboard["Interactive Dashboard"]
+        AIOHTTP["aiohttp server"]
+        REACT["React SPA<br/>canvas graph explorer"]
+    end
+
+    Agents --> Transport
+    Transport --> Server
+    WriteTools --> GE
+    WriteTools --> EE
+    ReadTools --> SE
+    ReadTools --> GT
+    ReadTools --> GE
+    UT1 --> Dashboard
+    GE --> DB
+    SE --> VEC
+    SE --> FTS
+    GT --> DB
+    EM --> DB
+    EE --> VEC
+    AIOHTTP --> DB
+
+    style Agents fill:#6366f1,stroke:#4f46e5,color:#fff
     style Server fill:#0ea5e9,stroke:#0284c7,color:#fff
     style Storage fill:#f59e0b,stroke:#d97706,color:#fff
+    style Engines fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    style Dashboard fill:#10b981,stroke:#059669,color:#fff
 ```
 
 Everything lives in a single SQLite database per project. No external services, no Docker containers, no API keys. The server communicates over MCP's standard stdio transport (SSE also supported) and stores all data in `.graphmem/graph.db` at your project root.
@@ -256,11 +329,41 @@ The database file is portable -- copy it between machines, check it into version
 
 ---
 
+### Tool Request Flow
+
+Every tool call follows the same pattern through the stack:
+
+```mermaid
+sequenceDiagram
+    participant Agent as LLM Agent
+    participant MCP as MCP Protocol
+    participant Tool as Tool Function
+    participant Engine as GraphEngine
+    participant Embed as EmbeddingEngine
+    participant Storage as SQLiteBackend
+    participant DB as SQLite DB
+
+    Agent->>MCP: tool call (e.g. add_entities)
+    MCP->>Tool: dispatch to handler
+    Tool->>Engine: validate + build domain objects
+    Engine->>Storage: begin transaction
+    Storage->>DB: INSERT/UPDATE/DELETE
+    DB-->>Storage: result
+    Storage-->>Engine: commit
+    Engine-->>Tool: domain result
+    Tool->>Embed: compute embeddings (async)
+    Embed->>Storage: upsert vectors
+    Tool-->>MCP: JSON response
+    MCP-->>Agent: tool result
+```
+
+---
+
 ## MCP Integration
 
-graph-mem is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 14 tools that the agent can call directly.
+graph-mem is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 19 tools that the agent can call directly.
 
-**What this means in practice:** once you add graph-mem to your agent's MCP config, the agent sees 14 new tools (`add_entities`, `search_nodes`, `find_connections`, `open_dashboard`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+**What this means in practice:** once you add graph-mem to your agent's MCP config, the agent sees 19 new tools (`add_entities`, `search_nodes`, `find_connections`, `update_observation`, `open_dashboard`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics (entity count, relationship count, etc.).
 
@@ -285,60 +388,133 @@ The `.graphmem/` directory is automatically created if it doesn't exist. Add `.g
 
 ## How It Works
 
-### Entities, Relationships, and Observations
+### Data Model
 
-The knowledge graph has three core primitives:
+The knowledge graph has three core primitives. Every primitive supports full CRUD -- create, read, update, and delete:
 
 ```mermaid
 erDiagram
     ENTITY {
-        string name PK
-        string entity_type
-        string description
-        json properties
+        string id PK "ULID primary key"
+        string name UK "unique display name"
+        string entity_type "person, service, concept, etc."
+        string description "rich text description"
+        json properties "arbitrary key-value metadata"
+        float created_at "unix timestamp"
+        float updated_at "unix timestamp"
     }
     OBSERVATION {
-        string id PK
-        string content
-        string source
-        float[] embedding
+        string id PK "ULID primary key"
+        string entity_id FK "parent entity"
+        string content "atomic factual statement"
+        string source "provenance (session, doc, etc.)"
+        float created_at "unix timestamp"
     }
     RELATIONSHIP {
-        string id PK
-        string relationship_type
-        float weight
-        json properties
+        string id PK "ULID primary key"
+        string source_id FK "source entity"
+        string target_id FK "target entity"
+        string relationship_type "depends_on, uses, etc."
+        float weight "0.0 to 1.0 strength"
+        json properties "arbitrary edge metadata"
+        float created_at "unix timestamp"
+        float updated_at "unix timestamp"
+    }
+    ENTITY_EMBEDDING {
+        string id FK "entity_id"
+        blob embedding "float32 vector"
+    }
+    OBSERVATION_EMBEDDING {
+        string id FK "observation_id"
+        blob embedding "float32 vector"
     }
 
-    ENTITY ||--o{ OBSERVATION : "has"
-    ENTITY ||--o{ RELATIONSHIP : "source"
-    ENTITY ||--o{ RELATIONSHIP : "target"
+    ENTITY ||--o{ OBSERVATION : "has observations"
+    ENTITY ||--o{ RELATIONSHIP : "source of"
+    ENTITY ||--o{ RELATIONSHIP : "target of"
+    ENTITY ||--o| ENTITY_EMBEDDING : "vector index"
+    OBSERVATION ||--o| OBSERVATION_EMBEDDING : "vector index"
 ```
 
 - **Entities** are named nodes with a type and description (e.g., `AuthService`, type `service`).
-- **Relationships** are typed, directed edges between entities (e.g., `AuthService --DEPENDS_ON--> Database`).
+- **Relationships** are typed, directed, weighted edges between entities (e.g., `AuthService --DEPENDS_ON--> Database`).
 - **Observations** are factual statements attached to entities (e.g., "Uses bcrypt for password hashing").
+- **Embeddings** are sentence-transformer vectors stored alongside entities and observations for semantic search.
 
-### Hybrid Search
+### CRUD Operations Map
+
+```mermaid
+graph LR
+    subgraph Entities["Entity CRUD"]
+        E_C["add_entities<br/>create + auto-merge"]
+        E_R["get_entity<br/>list_entities"]
+        E_U["update_entity<br/>description, type, props"]
+        E_D["delete_entities<br/>cascade to obs + rels"]
+        E_M["merge_entities<br/>consolidate duplicates"]
+    end
+
+    subgraph Relationships["Relationship CRUD"]
+        R_C["add_relationships<br/>create + dedup"]
+        R_R["find_connections<br/>get_subgraph<br/>find_paths"]
+        R_U["update_relationship<br/>weight, type, props"]
+        R_D["delete_relationships<br/>by source+target+type"]
+    end
+
+    subgraph Observations["Observation CRUD"]
+        O_C["add_observations<br/>attach to entity"]
+        O_R["search_observations<br/>get_entity (includes obs)"]
+        O_U["update_observation<br/>edit content in-place"]
+        O_D["delete_observations<br/>by ID with validation"]
+    end
+
+    style Entities fill:#6366f1,stroke:#4f46e5,color:#fff
+    style Relationships fill:#0ea5e9,stroke:#0284c7,color:#fff
+    style Observations fill:#10b981,stroke:#059669,color:#fff
+```
+
+### Hybrid Search Pipeline
 
 `search_nodes` combines three retrieval strategies using Reciprocal Rank Fusion (RRF):
 
 ```mermaid
-graph LR
-    Query["Search Query"]
-    Vec["Vector Search<br/>cosine similarity on<br/>sentence-transformer embeddings"]
-    FTS["Full-Text Search<br/>SQLite FTS5 with BM25"]
-    RRF["RRF Fusion<br/>merge + re-rank"]
-    Results["Scored Results"]
+graph TB
+    Query["Search Query<br/>'authentication service'"]
 
-    Query --> Vec
-    Query --> FTS
-    Vec --> RRF
-    FTS --> RRF
-    RRF --> Results
+    subgraph VectorPath["Vector Search Path"]
+        Encode["Encode query<br/>sentence-transformers"]
+        VecSearch["sqlite-vec cosine search<br/>top-K nearest neighbors"]
+        VecRank["Vector rankings<br/>(entity_id, distance)"]
+    end
+
+    subgraph FTSPath["Full-Text Search Path"]
+        Tokenize["Tokenize + stem query<br/>FTS5 query syntax"]
+        FTSSearch["SQLite FTS5 BM25 search<br/>entities + observations"]
+        FTSRank["FTS rankings<br/>(entity_id, bm25_score)"]
+    end
+
+    subgraph Fusion["RRF Fusion"]
+        Merge["Reciprocal Rank Fusion<br/>score = sum(1 / (k + rank_i))"]
+        Dedup["Deduplicate + merge scores"]
+        Sort["Sort by fused score"]
+    end
+
+    subgraph Enrich["Result Enrichment"]
+        FetchEntity["Fetch entity details"]
+        FetchRels["Fetch relationships"]
+        FetchObs["Fetch observations<br/>(if include_observations=true)"]
+    end
+
+    Results["Final scored results<br/>entities with relationships + observations"]
+
+    Query --> VectorPath
+    Query --> FTSPath
+    VecRank --> Fusion
+    FTSRank --> Fusion
+    Sort --> Enrich
+    Enrich --> Results
 
     style Query fill:#6366f1,stroke:#4f46e5,color:#fff
-    style RRF fill:#0ea5e9,stroke:#0284c7,color:#fff
+    style Fusion fill:#f59e0b,stroke:#d97706,color:#fff
     style Results fill:#10b981,stroke:#059669,color:#fff
 ```
 
@@ -362,7 +538,7 @@ graph LR
     style D fill:#34d399,stroke:#10b981,color:#fff
 ```
 
-A query like `find_connections("AuthService", max_hops=3)` traverses the full chain `AuthService → UserStore → PostgresDB → users_table`, even though `users_table` never mentions "auth."
+A query like `find_connections("AuthService", max_hops=3)` traverses the full chain `AuthService -> UserStore -> PostgresDB -> users_table`, even though `users_table` never mentions "auth."
 
 ### Entity Resolution
 
@@ -370,12 +546,12 @@ When the agent references an entity by name, graph-mem resolves it through a cas
 
 ```mermaid
 flowchart TD
-    Input["Agent references entity name"]
-    Exact["Exact match<br/>(case-sensitive)"]
-    CI["Case-insensitive match"]
-    FTS["FTS5 fuzzy match"]
-    Suggest["Return closest<br/>suggestions"]
-    Found["Entity resolved"]
+    Input["Agent references entity name<br/>(e.g. 'authservice')"]
+    Exact["1. Exact match<br/>name = 'authservice'<br/>+ optional type constraint"]
+    CI["2. Case-insensitive match<br/>LOWER(name) = 'authservice'"]
+    FTS["3. FTS5 fuzzy search<br/>similar names via full-text index"]
+    Found["Entity resolved<br/>return Entity object with ID"]
+    Suggest["Entity not found<br/>return top-5 suggestions<br/>so agent can self-correct"]
 
     Input --> Exact
     Exact -->|"found"| Found
@@ -387,12 +563,49 @@ flowchart TD
 
     style Found fill:#10b981,stroke:#059669,color:#fff
     style Suggest fill:#f59e0b,stroke:#d97706,color:#fff
+    style Input fill:#6366f1,stroke:#4f46e5,color:#fff
 ```
 
-1. **Exact match** -- case-sensitive name lookup.
+1. **Exact match** -- case-sensitive name lookup, optionally scoped by entity type.
 2. **Case-insensitive match** -- normalized comparison.
 3. **FTS5 match** -- full-text search for partial or fuzzy names.
 4. **Suggestions** -- if nothing matches, return the closest candidates so the agent can self-correct.
+
+### Storage Backend Architecture
+
+```mermaid
+graph TB
+    subgraph ABC["StorageBackend ABC (50+ abstract methods)"]
+        direction LR
+        Life["Lifecycle<br/>initialize · close · transaction"]
+        EntOps["Entity Ops<br/>upsert · get · list · update · delete · count"]
+        RelOps["Relationship Ops<br/>upsert · get · update · delete · count"]
+        ObsOps["Observation Ops<br/>insert · get · update · delete · move · count"]
+        EmbOps["Embedding Ops<br/>upsert · delete · vector_search · cache"]
+        FTSOps["FTS Ops<br/>search_entities · search_observations · suggest"]
+        Meta["Metadata + Traversal<br/>get/set metadata · fetch_all · fetch_one"]
+    end
+
+    subgraph SQLite["SQLiteBackend (reference implementation)"]
+        WAL["WAL mode<br/>concurrent reads"]
+        VEC2["sqlite-vec<br/>ANN vectors"]
+        FTS2["FTS5 + triggers<br/>auto-sync index"]
+        PRAGMA["PRAGMA tuning<br/>journal, cache, mmap"]
+    end
+
+    subgraph Future["Future Backends"]
+        Neo4j["Neo4j"]
+        Memgraph["Memgraph"]
+        PG["PostgreSQL"]
+    end
+
+    ABC --> SQLite
+    ABC -.-> Future
+
+    style ABC fill:#6366f1,stroke:#4f46e5,color:#fff
+    style SQLite fill:#0ea5e9,stroke:#0284c7,color:#fff
+    style Future fill:#94a3b8,stroke:#64748b,color:#fff
+```
 
 ---
 
@@ -524,9 +737,9 @@ pip install -e ".[full,dev]"
 ### Running Tests
 
 ```bash
-pytest                            # all tests (323 pass)
+pytest                            # all tests (340 pass)
 pytest tests/test_graph/          # graph engine tests
-pytest tests/test_server/         # MCP server tool tests
+pytest tests/test_server/         # MCP server tool tests (all 19 tools)
 pytest tests/test_cli/            # CLI command tests
 pytest tests/test_models/         # data model tests
 pytest tests/test_semantic/       # search + vector tests
@@ -542,15 +755,15 @@ pytest -x -q                      # stop on first failure, quiet output
 graph TD
     Root["src/graph_mem/"]
 
-    CLI["cli/<br/>main.py · install.py"]
-    DB["db/<br/>connection.py · schema.py · migrations/"]
-    GraphMod["graph/<br/>engine.py · traversal.py · merge.py"]
-    Models["models/<br/>entity.py · relationship.py · observation.py"]
-    SemanticMod["semantic/<br/>embeddings.py · search.py"]
-    StorageMod["storage/<br/>base.py · sqlite_backend.py"]
-    UIMod["ui/<br/>server.py · routes.py · frontend/"]
-    Utils["utils/<br/>config.py · errors.py · ids.py · logging.py"]
-    Entry["server.py<br/>MCP entry point · 14 tool definitions"]
+    Entry["server.py<br/>MCP entry point<br/>19 tool definitions<br/>lifespan + embedding helpers"]
+    CLI["cli/<br/>main.py -- Click CLI commands<br/>install.py -- 19-agent skill installer"]
+    DB["db/<br/>connection.py -- aiosqlite wrapper<br/>schema.py -- migration runner<br/>migrations/ -- versioned SQL"]
+    GraphMod["graph/<br/>engine.py -- CRUD + entity resolution<br/>traversal.py -- BFS + pathfinding + subgraph<br/>merge.py -- entity consolidation"]
+    Models["models/<br/>entity.py -- Entity dataclass<br/>relationship.py -- Relationship dataclass<br/>observation.py -- Observation dataclass"]
+    SemanticMod["semantic/<br/>embeddings.py -- lazy model + ONNX + cache<br/>search.py -- hybrid vector+FTS5+RRF"]
+    StorageMod["storage/<br/>base.py -- StorageBackend ABC (50+ methods)<br/>sqlite_backend.py -- reference impl<br/>__init__.py -- backend registry"]
+    UIMod["ui/<br/>server.py -- aiohttp app factory<br/>routes.py -- REST API endpoints<br/>frontend/ -- pre-built React SPA"]
+    Utils["utils/<br/>config.py -- Config dataclass + env vars<br/>errors.py -- 14 error classes<br/>ids.py -- ULID generation<br/>logging.py -- structured logging"]
 
     Root --> Entry
     Root --> CLI
@@ -568,13 +781,13 @@ graph TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `server.py` | MCP server entry point, registers all 14 tools |
+| `server.py` | MCP server entry point, registers all 19 tools, lifespan management, embedding orchestration |
 | `cli/` | Click CLI commands (server, init, status, export, import, validate, ui) + skill installer for 19 agents |
 | `db/` | Database class (aiosqlite, WAL mode, PRAGMA tuning) + versioned migrations |
 | `graph/` | GraphEngine CRUD, BFS traversal, path-finding, subgraph extraction, entity merging |
 | `models/` | Dataclasses for Entity, Relationship, Observation |
 | `semantic/` | EmbeddingEngine (lazy loading, ONNX, content-hash cache) + HybridSearch (vector + FTS5 + RRF) |
-| `storage/` | StorageBackend ABC (~37 methods) + SQLiteBackend reference implementation |
+| `storage/` | StorageBackend ABC (50+ methods) + SQLiteBackend reference implementation + backend registry |
 | `ui/` | aiohttp web server + REST API routes + pre-built React SPA graph explorer |
 | `utils/` | Config, structured logging, error hierarchy (14 classes), ULID generation |
 

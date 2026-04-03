@@ -266,6 +266,22 @@ class StorageBackend(ABC):
         """Reassign all observations from one entity to another. Returns count."""
 
     @abstractmethod
+    async def delete_observation(self, obs_id: str) -> bool:
+        """Delete a single observation by ID.
+
+        Returns True if an observation was deleted, False if not found.
+        Also removes the corresponding FTS entry if applicable.
+        """
+
+    @abstractmethod
+    async def update_observation(self, obs_id: str, content: str) -> bool:
+        """Update the text content of an observation in-place.
+
+        Returns True if the observation was updated, False if not found.
+        Also updates the corresponding FTS entry if applicable.
+        """
+
+    @abstractmethod
     async def count_observations(self) -> int:
         """Return the total number of observations."""
 

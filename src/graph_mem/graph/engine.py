@@ -401,6 +401,142 @@ class GraphEngine:
         rows = await self._storage.get_observations_for_entity(entity.id)
         return [Observation.from_row(row) for row in rows]
 
+    async def delete_observations(self, entity_name: str, observation_ids: list[str]) -> int:
+        """Delete specific observations from an entity.
+
+        Validates that the observations belong to the entity before deleting.
+
+        Returns:
+            Count of observations deleted.
+        """
+        if not observation_ids:
+            return 0
+
+        entity = await self.resolve_entity(entity_name)
+        # Get current observations to validate ownership
+        existing = await self._storage.get_observations_for_entity(entity.id)
+        existing_ids = {str(r["id"]) for r in existing}
+
+        deleted = 0
+        async with self._storage.transaction():
+            for obs_id in observation_ids:
+                if obs_id not in existing_ids:
+                    log.debug(
+                        "Observation %s does not belong to entity %r, skipping",
+                        obs_id,
+                        entity_name,
+                    )
+                    continue
+                if await self._storage.delete_observation(obs_id):
+                    deleted += 1
+
+        log.info(
+            "delete_observations: %d deleted from entity %r",
+            deleted,
+            entity_name,
+        )
+        return deleted
+
+    async def update_observation(
+        self,
+        entity_name: str,
+        observation_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        """Update the text content of an observation in-place.
+
+        Validates that the observation belongs to the entity.
+
+        Returns:
+            Dict with id, entity_name, old_content, new_content.
+        """
+        entity = await self.resolve_entity(entity_name)
+        existing = await self._storage.get_observations_for_entity(entity.id)
+        existing_map = {str(r["id"]): r for r in existing}
+
+        if observation_id not in existing_map:
+            raise EntityNotFoundError(
+                f"Observation {observation_id} not found on entity {entity_name!r}"
+            )
+
+        old_content = str(existing_map[observation_id]["content"])
+
+        async with self._storage.transaction():
+            updated = await self._storage.update_observation(observation_id, content)
+
+        if not updated:
+            raise EntityNotFoundError(f"Observation {observation_id} could not be updated")
+
+        log.info(
+            "update_observation: %s on entity %r updated",
+            observation_id,
+            entity_name,
+        )
+        return {
+            "id": observation_id,
+            "entity_name": entity_name,
+            "old_content": old_content,
+            "new_content": content,
+        }
+
+    # ── Relationship updates ─────────────────────────────────────────────
+
+    async def update_relationship(
+        self,
+        source: str,
+        target: str,
+        relationship_type: str,
+        *,
+        new_weight: float | None = None,
+        new_type: str | None = None,
+        properties: dict[str, object] | None = None,
+    ) -> dict[str, Any]:
+        """Update a relationship between two named entities in-place.
+
+        Returns:
+            Dict with the updated relationship details.
+        """
+        import json as _json
+
+        source_entity = await self.resolve_entity(source)
+        target_entity = await self.resolve_entity(target)
+
+        existing = await self._storage.get_relationship(
+            source_entity.id, target_entity.id, relationship_type
+        )
+        if existing is None:
+            raise EntityNotFoundError(
+                f"No relationship of type {relationship_type!r} between {source!r} and {target!r}"
+            )
+
+        updates: dict[str, Any] = {"updated_at": time.time()}
+        if new_weight is not None:
+            updates["weight"] = new_weight
+        if new_type is not None:
+            updates["relationship_type"] = new_type
+        if properties is not None:
+            old_props = _json.loads(str(existing.get("properties", "{}")))
+            merged = {**old_props, **properties}
+            updates["properties"] = _json.dumps(merged, ensure_ascii=False, default=str)
+
+        rel_id = str(existing["id"])
+        async with self._storage.transaction():
+            await self._storage.update_relationship(rel_id, updates)
+
+        log.info(
+            "update_relationship: %s -> %s (type=%s) updated",
+            source,
+            target,
+            relationship_type,
+        )
+        return {
+            "id": rel_id,
+            "source": source,
+            "target": target,
+            "relationship_type": new_type or relationship_type,
+            "status": "updated",
+        }
+
     # ── Entity resolution ────────────────────────────────────────────────
 
     async def resolve_entity(self, name: str, entity_type: str | None = None) -> Entity:

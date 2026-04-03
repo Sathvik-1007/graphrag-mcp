@@ -424,6 +424,19 @@ class SQLiteBackend(StorageBackend):
         row = await self._require_db().fetch_one("SELECT COUNT(*) AS cnt FROM observations")
         return int(row["cnt"]) if row else 0
 
+    async def delete_observation(self, obs_id: str) -> bool:
+        db = self._require_db()
+        cursor = await db.execute("DELETE FROM observations WHERE id = ?", (obs_id,))
+        return cursor.rowcount > 0
+
+    async def update_observation(self, obs_id: str, content: str) -> bool:
+        db = self._require_db()
+        cursor = await db.execute(
+            "UPDATE observations SET content = ? WHERE id = ?",
+            (content, obs_id),
+        )
+        return cursor.rowcount > 0
+
     # ── Embedding operations ─────────────────────────────────────────────
 
     async def upsert_entity_embedding(self, entity_id: str, embedding: bytes) -> None:
