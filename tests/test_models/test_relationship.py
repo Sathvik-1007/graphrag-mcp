@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.models.relationship — Relationship dataclass."""
+"""Tests for graph_mem.models.relationship — Relationship dataclass."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from graphrag_mcp.models.relationship import Relationship
+from graph_mem.models.relationship import Relationship
 
 
 def test_relationship_creation():

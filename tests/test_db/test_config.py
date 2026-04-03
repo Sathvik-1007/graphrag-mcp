@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from graphrag_mcp.utils.config import Config, ConfigError, load_config
+from graph_mem.utils.config import Config, ConfigError, load_config
 
 
 def test_default_config_is_valid():
@@ -15,38 +15,38 @@ def test_default_config_is_valid():
 
 
 def test_config_negative_cache_size():
-    with pytest.raises(ConfigError, match="GRAPHRAG_CACHE_SIZE"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_CACHE_SIZE"):
         Config(cache_size=-1)
 
 
 def test_config_zero_search_limit():
-    with pytest.raises(ConfigError, match="GRAPHRAG_SEARCH_LIMIT"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_SEARCH_LIMIT"):
         Config(search_limit=0)
 
 
 def test_config_zero_max_hops():
-    with pytest.raises(ConfigError, match="GRAPHRAG_MAX_HOPS"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_MAX_HOPS"):
         Config(max_hops=0)
 
 
 def test_config_invalid_transport():
-    with pytest.raises(ConfigError, match="GRAPHRAG_TRANSPORT"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_TRANSPORT"):
         Config(transport="websocket")
 
 
 def test_config_invalid_log_level():
-    with pytest.raises(ConfigError, match="GRAPHRAG_LOG_LEVEL"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_LOG_LEVEL"):
         Config(log_level="TRACE")
 
 
 def test_config_invalid_device():
-    with pytest.raises(ConfigError, match="GRAPHRAG_EMBEDDING_DEVICE"):
+    with pytest.raises(ConfigError, match="GRAPHMEM_EMBEDDING_DEVICE"):
         Config(embedding_device="tpu")
 
 
 def test_config_env_override(monkeypatch, tmp_path):
     db_path = str(tmp_path / "custom.db")
-    monkeypatch.setenv("GRAPHRAG_DB_PATH", db_path)
+    monkeypatch.setenv("GRAPHMEM_DB_PATH", db_path)
     config = Config()
     assert str(config.db_path) == db_path
 

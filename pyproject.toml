@@ -3,16 +3,16 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "graphrag-mcp"
+name = "graph-mem"
 version = "0.1.0"
 description = "Production-grade Graph-RAG MCP server with local embeddings — persistent knowledge graphs for any LLM-powered CLI agent"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    { name = "graphrag-mcp contributors" },
+    { name = "graph-mem contributors" },
 ]
-keywords = ["mcp", "graph-rag", "knowledge-graph", "embeddings", "sqlite", "llm"]
+keywords = ["mcp", "graph-mem", "knowledge-graph", "embeddings", "sqlite", "llm"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -48,19 +48,19 @@ dev = [
 ]
 
 [project.scripts]
-graphrag-mcp = "graphrag_mcp.cli.main:cli"
+graph-mem = "graph_mem.cli.main:cli"
 
 [project.urls]
-Homepage = "https://github.com/Sathvik-1007/graphrag-mcp"
-Documentation = "https://github.com/Sathvik-1007/graphrag-mcp#readme"
-Repository = "https://github.com/Sathvik-1007/graphrag-mcp"
-Issues = "https://github.com/Sathvik-1007/graphrag-mcp/issues"
+Homepage = "https://github.com/Sathvik-1007/GraphMem-MCP"
+Documentation = "https://github.com/Sathvik-1007/GraphMem-MCP#readme"
+Repository = "https://github.com/Sathvik-1007/GraphMem-MCP"
+Issues = "https://github.com/Sathvik-1007/GraphMem-MCP/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/graphrag_mcp"]
+packages = ["src/graph_mem"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/graphrag_mcp/ui/frontend" = "graphrag_mcp/ui/frontend"
+"src/graph_mem/ui/frontend" = "graph_mem/ui/frontend"
 
 [tool.ruff]
 target-version = "py310"
@@ -71,7 +71,7 @@ src = ["src"]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH", "RUF"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["graphrag_mcp"]
+known-first-party = ["graph_mem"]
 
 [tool.mypy]
 python_version = "3.10"

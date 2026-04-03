@@ -1,4 +1,4 @@
-"""Shared test fixtures for graphrag-mcp."""
+"""Shared test fixtures for graph-mem."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ def tmp_db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def tmp_graphrag_dir(tmp_path: Path) -> Path:
-    """Provide a temporary .graphrag directory."""
-    d = tmp_path / ".graphrag"
+def tmp_graphmem_dir(tmp_path: Path) -> Path:
+    """Provide a temporary .graphmem directory."""
+    d = tmp_path / ".graphmem"
     d.mkdir()
     return d

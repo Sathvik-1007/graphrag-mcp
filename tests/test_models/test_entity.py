@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.models.entity — Entity dataclass."""
+"""Tests for graph_mem.models.entity — Entity dataclass."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from graphrag_mcp.models.entity import Entity
+from graph_mem.models.entity import Entity
 
 
 def test_entity_creation():

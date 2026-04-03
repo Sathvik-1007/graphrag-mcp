@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 import pytest
 from click.testing import CliRunner
 
-from graphrag_mcp.cli.main import cli
+from graph_mem.cli.main import cli
 
 
 def _extract_json(output: str) -> dict:
@@ -34,11 +34,11 @@ def runner() -> CliRunner:
 
 
 def test_init_project_dir(runner: CliRunner, tmp_path: Path) -> None:
-    """--project-dir creates .graphrag/graph.db inside the project dir."""
+    """--project-dir creates .graphmem/graph.db inside the project dir."""
     result = runner.invoke(cli, ["init", "--project-dir", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert "Initialized" in result.output
-    db = tmp_path / ".graphrag" / "graph.db"
+    db = tmp_path / ".graphmem" / "graph.db"
     assert db.exists(), f"Expected {db} to exist"
 
 
@@ -48,8 +48,8 @@ def test_init_db_overrides_project_dir(runner: CliRunner, tmp_path: Path) -> Non
     result = runner.invoke(cli, ["init", "--project-dir", str(tmp_path), "--db", str(explicit_db)])
     assert result.exit_code == 0, result.output
     assert explicit_db.exists()
-    # .graphrag dir should NOT be created when --db is explicit
-    assert not (tmp_path / ".graphrag").exists()
+    # .graphmem dir should NOT be created when --db is explicit
+    assert not (tmp_path / ".graphmem").exists()
 
 
 # ── status ──────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ def test_install_project_dir(runner: CliRunner, tmp_path: Path) -> None:
     """install --project-dir installs the skill in the given directory."""
     result = runner.invoke(cli, ["install", "claude", "--project-dir", str(tmp_path)])
     assert result.exit_code == 0, result.output
-    skill_file = tmp_path / ".claude" / "skills" / "graphrag-mcp" / "SKILL.md"
+    skill_file = tmp_path / ".claude" / "skills" / "graph-mem" / "SKILL.md"
     assert skill_file.exists()
 
 

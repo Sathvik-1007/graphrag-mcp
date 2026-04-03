@@ -119,6 +119,19 @@ export function useGraph() {
       .map(([type, count]) => ({ type, count }));
   }, [state.graph]);
 
+  const refreshGraph = useCallback(async () => {
+    try {
+      const [graph, stats] = await Promise.all([
+        fetchGraph(200),
+        fetchStats(),
+      ]);
+      dispatch({ type: "SET_GRAPH", payload: graph });
+      dispatch({ type: "SET_STATS", payload: stats });
+    } catch (err) {
+      console.error("Failed to refresh graph:", err);
+    }
+  }, []);
+
   return {
     state,
     selectEntity,
@@ -127,6 +140,7 @@ export function useGraph() {
     selectAllTypes,
     clearAllTypes,
     toggleEdgeLabels,
+    refreshGraph,
     entityTypes,
   };
 }

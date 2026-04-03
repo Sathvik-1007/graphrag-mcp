@@ -1,10 +1,10 @@
-"""Tests for graphrag_mcp.models.observation — Observation dataclass."""
+"""Tests for graph_mem.models.observation — Observation dataclass."""
 
 from __future__ import annotations
 
 import pytest
 
-from graphrag_mcp.models.observation import PENDING_ENTITY_ID, Observation
+from graph_mem.models.observation import PENDING_ENTITY_ID, Observation
 
 
 def test_observation_creation():

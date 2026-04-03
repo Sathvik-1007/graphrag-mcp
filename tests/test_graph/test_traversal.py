@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 import pytest_asyncio
 
-from graphrag_mcp.graph.engine import GraphEngine
-from graphrag_mcp.graph.traversal import GraphTraversal
-from graphrag_mcp.models.entity import Entity
-from graphrag_mcp.models.relationship import Relationship
-from graphrag_mcp.storage import SQLiteBackend
+from graph_mem.graph.engine import GraphEngine
+from graph_mem.graph.traversal import GraphTraversal
+from graph_mem.models.entity import Entity
+from graph_mem.models.relationship import Relationship
+from graph_mem.storage import SQLiteBackend
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 

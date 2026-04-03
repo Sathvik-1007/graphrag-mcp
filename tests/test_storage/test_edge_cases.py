@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 import pytest
 
-from graphrag_mcp.storage import SQLiteBackend
+from graph_mem.storage import SQLiteBackend
 
 # ── Error paths ─────────────────────────────────────────────────────────────
 

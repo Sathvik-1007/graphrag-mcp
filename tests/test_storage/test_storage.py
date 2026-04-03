@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.storage — backend registry, factory, and SQLiteBackend."""
+"""Tests for graph_mem.storage — backend registry, factory, and SQLiteBackend."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ if TYPE_CHECKING:
 
 import pytest
 
-from graphrag_mcp.storage import (
+from graph_mem.storage import (
     SQLiteBackend,
     available_backends,
     create_backend,
     register_backend,
 )
-from graphrag_mcp.storage.base import StorageBackend as StorageBackendABC
-from graphrag_mcp.utils.errors import ConfigError
+from graph_mem.storage.base import StorageBackend as StorageBackendABC
+from graph_mem.utils.errors import ConfigError
 
 # ── Registry / factory tests ────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ def test_register_and_use_custom_backend():
         assert backend.backend_type == "fake"
     finally:
         # Clean up the registry so other tests are not affected
-        from graphrag_mcp.storage import _REGISTRY
+        from graph_mem.storage import _REGISTRY
 
         _REGISTRY.pop("_test_fake", None)
 
@@ -258,7 +258,7 @@ async def test_sqlite_backend_initialize_and_close(tmp_db_path: Path):
 
 async def test_sqlite_backend_not_initialized_raises(tmp_db_path: Path):
     """Using SQLiteBackend before initialize raises DatabaseError."""
-    from graphrag_mcp.utils.errors import DatabaseError
+    from graph_mem.utils.errors import DatabaseError
 
     backend = SQLiteBackend(tmp_db_path)
     with pytest.raises(DatabaseError, match="not initialized"):

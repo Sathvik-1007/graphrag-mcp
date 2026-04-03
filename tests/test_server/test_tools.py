@@ -14,13 +14,13 @@ if TYPE_CHECKING:
 
 import pytest_asyncio
 
-import graphrag_mcp.server as server_mod
-from graphrag_mcp.graph.engine import GraphEngine
-from graphrag_mcp.graph.merge import EntityMerger
-from graphrag_mcp.graph.traversal import GraphTraversal
-from graphrag_mcp.semantic.embeddings import EmbeddingEngine
-from graphrag_mcp.semantic.search import HybridSearch
-from graphrag_mcp.server import (
+import graph_mem.server as server_mod
+from graph_mem.graph.engine import GraphEngine
+from graph_mem.graph.merge import EntityMerger
+from graph_mem.graph.traversal import GraphTraversal
+from graph_mem.semantic.embeddings import EmbeddingEngine
+from graph_mem.semantic.search import HybridSearch
+from graph_mem.server import (
     add_entities,
     add_observations,
     add_relationships,
@@ -35,7 +35,7 @@ from graphrag_mcp.server import (
     search_observations,
     update_entity,
 )
-from graphrag_mcp.utils.config import Config
+from graph_mem.utils.config import Config
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -45,7 +45,7 @@ from graphrag_mcp.utils.config import Config
 @pytest_asyncio.fixture
 async def setup_server(tmp_path: Path):
     """Populate the module-level _state so tool functions work."""
-    from graphrag_mcp.storage import SQLiteBackend
+    from graph_mem.storage import SQLiteBackend
 
     db_path = tmp_path / "test.db"
     storage = SQLiteBackend(db_path)

@@ -1,15 +1,15 @@
-"""Tests for graphrag_mcp.utils.logging — structured logging setup."""
+"""Tests for graph_mem.utils.logging — structured logging setup."""
 
 from __future__ import annotations
 
 import logging
 
-from graphrag_mcp.utils.logging import get_logger, setup_logging
+from graph_mem.utils.logging import get_logger, setup_logging
 
 
 def test_setup_logging_creates_handler():
-    """setup_logging configures the root graphrag_mcp logger."""
-    root = logging.getLogger("graphrag_mcp")
+    """setup_logging configures the root graph_mem logger."""
+    root = logging.getLogger("graph_mem")
     root.handlers.clear()
 
     setup_logging("DEBUG")
@@ -20,7 +20,7 @@ def test_setup_logging_creates_handler():
 
 def test_setup_logging_idempotent():
     """Calling setup_logging twice at the same level is a no-op."""
-    root = logging.getLogger("graphrag_mcp")
+    root = logging.getLogger("graph_mem")
     root.handlers.clear()
 
     setup_logging("INFO")
@@ -33,7 +33,7 @@ def test_setup_logging_idempotent():
 def test_setup_logging_reconfigures_level():
     """setup_logging changes the level when called with a new value."""
     setup_logging("WARNING")
-    root = logging.getLogger("graphrag_mcp")
+    root = logging.getLogger("graph_mem")
     assert root.level == logging.WARNING
 
     setup_logging("ERROR")
@@ -41,9 +41,9 @@ def test_setup_logging_reconfigures_level():
 
 
 def test_get_logger_returns_child():
-    """get_logger returns a child of graphrag_mcp."""
+    """get_logger returns a child of graph_mem."""
     log = get_logger("test_child")
-    assert log.name == "graphrag_mcp.test_child"
+    assert log.name == "graph_mem.test_child"
     assert isinstance(log, logging.Logger)
 
 

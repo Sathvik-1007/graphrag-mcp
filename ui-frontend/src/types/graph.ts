@@ -25,7 +25,7 @@ export interface GraphResponse {
 export interface EntityObservation {
   content: string;
   source: string;
-  created_at: string | null;
+  created_at: string | number | null;
 }
 
 export interface EntityRelationship {

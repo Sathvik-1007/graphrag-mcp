@@ -10,12 +10,12 @@ if TYPE_CHECKING:
 import pytest
 import pytest_asyncio
 
-from graphrag_mcp.graph.engine import GraphEngine
-from graphrag_mcp.models.entity import Entity
-from graphrag_mcp.models.observation import Observation
-from graphrag_mcp.semantic.embeddings import EmbeddingEngine
-from graphrag_mcp.semantic.search import HybridSearch
-from graphrag_mcp.storage import SQLiteBackend
+from graph_mem.graph.engine import GraphEngine
+from graph_mem.models.entity import Entity
+from graph_mem.models.observation import Observation
+from graph_mem.semantic.embeddings import EmbeddingEngine
+from graph_mem.semantic.search import HybridSearch
+from graph_mem.storage import SQLiteBackend
 
 
 @pytest_asyncio.fixture
@@ -144,7 +144,7 @@ class TestEmbeddingHelpers:
 
     def test_embedding_to_bytes_roundtrip(self):
         """Test that embedding serialization is lossless."""
-        from graphrag_mcp.semantic.embeddings import _bytes_to_embedding, _embedding_to_bytes
+        from graph_mem.semantic.embeddings import _bytes_to_embedding, _embedding_to_bytes
 
         original = [1.0, 2.0, 3.0, 4.5]
         blob = _embedding_to_bytes(original)
@@ -155,7 +155,7 @@ class TestEmbeddingHelpers:
 
     def test_content_hash_deterministic(self):
         """Test that content hashing is deterministic."""
-        from graphrag_mcp.semantic.embeddings import _content_hash
+        from graph_mem.semantic.embeddings import _content_hash
 
         h1 = _content_hash("hello world")
         h2 = _content_hash("hello world")
@@ -171,7 +171,7 @@ class TestEmbeddingHelpers:
 
     def test_embedding_engine_dimension_raises_before_init(self):
         """Test that accessing dimension before init raises."""
-        from graphrag_mcp.utils.errors import EmbeddingError
+        from graph_mem.utils.errors import EmbeddingError
 
         engine = EmbeddingEngine()
         with pytest.raises(EmbeddingError, match="not initialized"):
@@ -179,7 +179,7 @@ class TestEmbeddingHelpers:
 
     async def test_embed_raises_when_unavailable(self):
         """Test that embed raises when engine is not available."""
-        from graphrag_mcp.utils.errors import EmbeddingError
+        from graph_mem.utils.errors import EmbeddingError
 
         engine = EmbeddingEngine()
         with pytest.raises(EmbeddingError, match="not available"):
@@ -242,7 +242,7 @@ class TestEnsureModelLoaded:
 
     def test_ensure_model_loaded_sets_unavailable_on_model_load_error(self) -> None:
         """When _load_model raises ModelLoadError, _available becomes False."""
-        from graphrag_mcp.utils.errors import ModelLoadError
+        from graph_mem.utils.errors import ModelLoadError
 
         engine = EmbeddingEngine(model_name="test", use_onnx=False)
         engine._available = True
@@ -260,7 +260,7 @@ class TestEnsureModelLoaded:
 
     def test_ensure_model_loaded_sets_unavailable_on_dimension_mismatch(self) -> None:
         """When dimensions mismatch, _available becomes False."""
-        from graphrag_mcp.utils.errors import DimensionMismatchError
+        from graph_mem.utils.errors import DimensionMismatchError
 
         engine = EmbeddingEngine(model_name="test", use_onnx=False)
         engine._available = True
@@ -281,7 +281,7 @@ class TestEnsureModelLoaded:
 
     def test_ensure_model_loaded_sets_unavailable_on_runtime_error(self) -> None:
         """When an unexpected RuntimeError occurs, _available becomes False."""
-        from graphrag_mcp.utils.errors import EmbeddingError
+        from graph_mem.utils.errors import EmbeddingError
 
         engine = EmbeddingEngine(model_name="test", use_onnx=False)
         engine._available = True

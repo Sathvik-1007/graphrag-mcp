@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.db.connection.Database."""
+"""Tests for graph_mem.db.connection.Database."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 import pytest
 import pytest_asyncio
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.utils.errors import DatabaseError
+from graph_mem.db.connection import Database
+from graph_mem.utils.errors import DatabaseError
 
 # ---------------------------------------------------------------------------
 # Fixtures

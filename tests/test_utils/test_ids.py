@@ -1,8 +1,8 @@
-"""Tests for graphrag_mcp.utils.ids — ULID-based ID generation."""
+"""Tests for graph_mem.utils.ids — ULID-based ID generation."""
 
 from __future__ import annotations
 
-from graphrag_mcp.utils.ids import generate_id
+from graph_mem.utils.ids import generate_id
 
 
 def test_generate_id_returns_string():

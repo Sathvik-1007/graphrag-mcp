@@ -9,12 +9,12 @@ if TYPE_CHECKING:
 
 import pytest_asyncio
 
-from graphrag_mcp.graph.engine import GraphEngine
-from graphrag_mcp.models.entity import Entity
-from graphrag_mcp.models.observation import Observation
-from graphrag_mcp.semantic.embeddings import EmbeddingEngine
-from graphrag_mcp.semantic.search import HybridSearch
-from graphrag_mcp.storage import SQLiteBackend
+from graph_mem.graph.engine import GraphEngine
+from graph_mem.models.entity import Entity
+from graph_mem.models.observation import Observation
+from graph_mem.semantic.embeddings import EmbeddingEngine
+from graph_mem.semantic.search import HybridSearch
+from graph_mem.storage import SQLiteBackend
 
 
 @pytest_asyncio.fixture
@@ -79,7 +79,7 @@ async def test_search_entities_includes_relationships(search_env):
             Entity(name="Bob", entity_type="person"),
         ]
     )
-    from graphrag_mcp.models.relationship import Relationship
+    from graph_mem.models.relationship import Relationship
 
     alice = await graph.resolve_entity("Alice")
     bob = await graph.resolve_entity("Bob")

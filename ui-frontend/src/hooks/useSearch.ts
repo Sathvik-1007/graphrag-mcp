@@ -7,6 +7,7 @@ export function useSearch() {
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const search = useCallback((q: string) => {
     setQuery(q);
@@ -15,6 +16,11 @@ export function useSearch() {
   const clearSearch = useCallback(() => {
     setQuery("");
     setResults(null);
+    // Cancel in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -22,20 +28,34 @@ export function useSearch() {
 
     if (!query.trim()) {
       setResults(null);
+      setLoading(false);
       return;
     }
 
+    // Debounce 150ms (reduced from 300 — local results show instantly anyway)
     timerRef.current = setTimeout(async () => {
+      // Cancel previous in-flight request
+      if (abortRef.current) abortRef.current.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setLoading(true);
       try {
         const data = await fetchSearch(query.trim());
-        setResults(data);
+        // Only update if this request wasn't aborted
+        if (!controller.signal.aborted) {
+          setResults(data);
+        }
       } catch {
-        setResults(null);
+        if (!controller.signal.aborted) {
+          setResults(null);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
-    }, 300);
+    }, 150);
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

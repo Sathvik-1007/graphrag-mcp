@@ -1,4 +1,4 @@
-"""Tests for the graphrag-mcp UI API routes.
+"""Tests for the graph-mem UI API routes.
 
 Uses aiohttp.test_utils to exercise each endpoint with mock storage/search.
 """
@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 
-from graphrag_mcp.ui.routes import setup_routes
+from graph_mem.ui.routes import setup_routes
 
 # ---------------------------------------------------------------------------
 # Mocks
@@ -148,7 +148,7 @@ class MockSearch:
 # ---------------------------------------------------------------------------
 
 FRONTEND_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "src" / "graphrag_mcp" / "ui" / "frontend"
+    Path(__file__).resolve().parent.parent.parent / "src" / "graph_mem" / "ui" / "frontend"
 )
 
 
@@ -325,16 +325,16 @@ async def test_api_stats_distributions(client):
 
 
 def test_ui_cli_command_exists():
-    """`graphrag-mcp ui --help` doesn't error."""
+    """`graph-mem ui --help` doesn't error."""
     import subprocess
     import sys
 
     result = subprocess.run(
-        [sys.executable, "-m", "graphrag_mcp.cli.main", "ui", "--help"],
+        [sys.executable, "-m", "graph_mem.cli.main", "ui", "--help"],
         capture_output=True,
         text=True,
         timeout=15,
-        cwd="/home/sathvik/D/N/graphrag-mcp",
+        cwd="/tmp",
     )
     # Click prints help text to stdout and exits 0
     assert result.returncode == 0
@@ -346,15 +346,14 @@ def test_ui_cli_command_exists():
 # ---------------------------------------------------------------------------
 
 
-async def test_ui_no_write_endpoints(client):
-    """No POST/PUT/DELETE routes exist."""
-    write_methods = {"POST", "PUT", "DELETE", "PATCH"}
+async def test_ui_write_endpoints_exist(client):
+    """POST routes exist for entity/relationship/observation creation."""
+    post_routes = []
     for route in client.app.router.routes():
-        method = route.method
-        if method == "*":
-            # Wildcard route — skip (used by static resources)
-            continue
-        assert method not in write_methods, f"Found {method} route: {route.resource}"
+        if route.method == "POST":
+            post_routes.append(str(route.resource))
+    # We expect at least the entity, relationship, and observations POST routes
+    assert len(post_routes) >= 3, f"Expected >=3 POST routes, got {post_routes}"
 
 
 # ---------------------------------------------------------------------------

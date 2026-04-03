@@ -1,13 +1,14 @@
-import { useCallback } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useGraph } from "./hooks/useGraph";
 import { useSearch } from "./hooks/useSearch";
 import { useTheme } from "./hooks/useTheme";
-import { StatsBar } from "./components/StatsBar";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { GraphView } from "./components/GraphView";
-import { SearchBar } from "./components/SearchBar";
-import { EntityPanel } from "./components/EntityPanel";
-import { FilterPanel } from "./components/FilterPanel";
+import { DEFAULT_PHYSICS } from "./engine/ForceEngine";
+import type { PhysicsConfig } from "./engine/ForceEngine";
+import GraphCanvas from "./components/GraphCanvas";
+import type { GraphCanvasHandle } from "./components/GraphCanvas";
+import Sidebar from "./components/Sidebar";
+import DetailPanel from "./components/DetailPanel";
+import { addEntity, addObservations, addRelationship, updateEntity, deleteEntity } from "./api/client";
 
 export default function App() {
   const {
@@ -17,106 +18,170 @@ export default function App() {
     toggleEntityType,
     selectAllTypes,
     clearAllTypes,
-    toggleEdgeLabels,
+    refreshGraph,
     entityTypes,
   } = useGraph();
 
   const { query, results, loading: searchLoading, search, clearSearch } = useSearch();
   const { theme, toggleTheme } = useTheme();
+  const [physics, setPhysics] = useState<PhysicsConfig>({ ...DEFAULT_PHYSICS });
+  const canvasRef = useRef<GraphCanvasHandle>(null);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
-  const handleNodeClick = useCallback(
+  // Collect all entity names for clickable observation keywords
+  const allEntityNames = useMemo(
+    () => (state.graph?.entities ?? []).map((e) => e.name),
+    [state.graph],
+  );
+
+  const handlePhysicsChange = useCallback((partial: Partial<PhysicsConfig>) => {
+    setPhysics((prev) => ({ ...prev, ...partial }));
+  }, []);
+
+  const handleSelectNode = useCallback(
     (name: string) => {
       void selectEntity(name);
     },
-    [selectEntity]
+    [selectEntity],
   );
+
+  const handleDeselectNode = useCallback(() => {
+    clearEntity();
+  }, [clearEntity]);
 
   const handleSearchSelect = useCallback(
     (name: string) => {
       void selectEntity(name);
+      // Focus the canvas on the selected node
+      canvasRef.current?.focusNode(name);
     },
-    [selectEntity]
+    [selectEntity],
   );
 
+  const handleAddEntity = useCallback(
+    async (name: string, type: string, description: string, observations?: string[]) => {
+      await addEntity(name, type, description);
+      if (observations && observations.length > 0) {
+        await addObservations(name, observations);
+      }
+      await refreshGraph();
+    },
+    [refreshGraph],
+  );
+
+  const handleAddRelationship = useCallback(
+    async (source: string, target: string, relType: string) => {
+      await addRelationship(source, target, relType);
+      await refreshGraph();
+    },
+    [refreshGraph],
+  );
+
+  const handleUpdateEntity = useCallback(
+    async (name: string, fields: { description?: string; entity_type?: string }) => {
+      await updateEntity(name, fields);
+      // Re-fetch entity details and graph
+      await selectEntity(name);
+      await refreshGraph();
+    },
+    [selectEntity, refreshGraph],
+  );
+
+  const handleDeleteEntity = useCallback(
+    async (name: string) => {
+      await deleteEntity(name);
+      clearEntity();
+      await refreshGraph();
+    },
+    [clearEntity, refreshGraph],
+  );
+
+  // Loading state
   if (state.loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-[var(--color-text-secondary)]">
-        <div className="text-center">
-          <div className="text-2xl mb-2">Loading graph...</div>
-          <div className="text-sm">Connecting to GraphRAG API</div>
+      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", color: "var(--color-text-muted)" }}>
+          <div style={{ fontSize: 14, fontWeight: 500 }}>Loading graph...</div>
         </div>
       </div>
     );
   }
 
+  // Error state
   if (state.error) {
     return (
-      <div className="flex items-center justify-center h-screen text-red-400">
-        <div className="text-center max-w-md">
-          <div className="text-xl mb-2">Connection Error</div>
-          <div className="text-sm mb-4">{state.error}</div>
-          <p className="text-xs text-[var(--color-text-secondary)]">
-            Make sure the GraphRAG API server is running on port 8080
-          </p>
+      <div className="app-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center", maxWidth: 400 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--color-danger)", marginBottom: 8 }}>
+            Failed to load graph
+          </div>
+          <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{state.error}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <>
-      <StatsBar stats={state.stats}>
-        <ThemeToggle theme={theme} onToggle={toggleTheme} />
-      </StatsBar>
-      <div className="flex flex-1 overflow-hidden">
-        {/* Graph area */}
-        <div className="flex-1 min-w-0">
-          <GraphView
-            data={state.graph}
-            visibleTypes={state.visibleEntityTypes}
-            showEdgeLabels={state.showEdgeLabels}
-            selectedNode={state.selectedEntity?.name ?? null}
-            theme={theme}
-            onNodeClick={handleNodeClick}
-          />
+    <div className="app-shell" data-sidebar={sidebarExpanded ? "expanded" : "collapsed"}>
+      {/* Title bar */}
+      <div className="title-bar">
+        <div className="title-bar-brand">
+          <svg className="title-bar-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="6" cy="6" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><circle cx="6" cy="18" r="3" />
+            <line x1="8.5" y1="7.5" x2="15.5" y2="16.5" /><line x1="15.5" y1="7.5" x2="8.5" y2="16.5" />
+          </svg>
+          <span className="title-bar-name">GraphMem <span className="title-bar-mcp">MCP</span></span>
         </div>
-
-        {/* Sidebar */}
-        <div className="w-80 flex-shrink-0 border-l border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden">
-          {/* Search */}
-          <div className="p-3 border-b border-[var(--color-border)]">
-            <SearchBar
-              query={query}
-              results={results}
-              loading={searchLoading}
-              onSearch={search}
-              onClear={clearSearch}
-              onSelectResult={handleSearchSelect}
-            />
+        {state.stats && (
+          <div className="title-bar-stats">
+            <span>{state.stats.entity_count} entities</span>
+            <span className="title-bar-dot" />
+            <span>{state.stats.relationship_count} relations</span>
+            <span className="title-bar-dot" />
+            <span>{state.stats.observation_count} observations</span>
           </div>
-
-          {/* Entity detail or filters */}
-          <div className="flex-1 overflow-auto p-3">
-            {state.selectedEntity ? (
-              <EntityPanel
-                entity={state.selectedEntity}
-                onClose={clearEntity}
-                onNavigate={handleNodeClick}
-              />
-            ) : (
-              <FilterPanel
-                entityTypes={entityTypes}
-                visibleTypes={state.visibleEntityTypes}
-                showEdgeLabels={state.showEdgeLabels}
-                onToggleType={toggleEntityType}
-                onSelectAll={selectAllTypes}
-                onClearAll={clearAllTypes}
-                onToggleEdgeLabels={toggleEdgeLabels}
-              />
-            )}
-          </div>
-        </div>
+        )}
       </div>
-    </>
+
+      <GraphCanvas
+        ref={canvasRef}
+        graph={state.graph}
+        visibleEntityTypes={state.visibleEntityTypes}
+        selectedNodeId={state.selectedEntity?.name ?? null}
+        physics={physics}
+        onSelectNode={handleSelectNode}
+        onDeselectNode={handleDeselectNode}
+      />
+      <Sidebar
+        query={query}
+        searchResults={results?.results ?? []}
+        searchLoading={searchLoading}
+        graphEntities={state.graph?.entities ?? []}
+        onSearch={search}
+        onClearSearch={clearSearch}
+        onSelectResult={handleSearchSelect}
+        entityTypes={entityTypes}
+        visibleEntityTypes={state.visibleEntityTypes}
+        onToggleType={toggleEntityType}
+        onSelectAllTypes={selectAllTypes}
+        onClearAllTypes={clearAllTypes}
+        onAddEntity={handleAddEntity}
+        onAddRelationship={handleAddRelationship}
+        physics={physics}
+        onPhysicsChange={handlePhysicsChange}
+        stats={state.stats}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onExpandChange={setSidebarExpanded}
+      />
+      <DetailPanel
+        entity={state.selectedEntity}
+        onClose={handleDeselectNode}
+        onNavigate={handleSelectNode}
+        onUpdateEntity={handleUpdateEntity}
+        onDeleteEntity={handleDeleteEntity}
+        allEntityNames={allEntityNames}
+      />
+    </div>
   );
 }

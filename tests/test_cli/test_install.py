@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.cli.install — skill installer."""
+"""Tests for graph_mem.cli.install — skill installer."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from graphrag_mcp.cli.install import (
+from graph_mem.cli.install import (
     _SECTION_BEGIN,
     _SECTION_END,
     SUPPORTED_AGENTS,
@@ -43,10 +43,30 @@ def home_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_supported_agents_list() -> None:
-    """All seven expected agents should be present in SUPPORTED_AGENTS."""
-    expected = {"claude", "opencode", "codex", "gemini", "cursor", "windsurf", "amp"}
+    """All expected agents should be present in SUPPORTED_AGENTS."""
+    expected = {
+        "claude",
+        "opencode",
+        "codex",
+        "gemini",
+        "cursor",
+        "windsurf",
+        "amp",
+        "antigravity",
+        "copilot",
+        "kiro",
+        "roocode",
+        "qoder",
+        "trae",
+        "continue",
+        "codebuddy",
+        "droid",
+        "kilocode",
+        "warp",
+        "augment",
+    }
     assert set(SUPPORTED_AGENTS) == expected
-    assert len(SUPPORTED_AGENTS) == 7
+    assert len(SUPPORTED_AGENTS) == 19
 
 
 # ---------------------------------------------------------------------------
@@ -59,10 +79,10 @@ def test_install_claude_project(project_dir: Path) -> None:
     result = install_skill("claude", scope="project", project_dir=project_dir)
 
     assert result.exists()
-    assert result == project_dir / ".claude" / "skills" / "graphrag-mcp" / "SKILL.md"
+    assert result == project_dir / ".claude" / "skills" / "graph-mem" / "SKILL.md"
 
     content = result.read_text(encoding="utf-8")
-    assert "graphrag-mcp" in content.lower() or "graphrag" in content.lower()
+    assert "graph-mem" in content.lower()
     assert len(content) > 100  # non-trivial content
 
 
@@ -71,18 +91,18 @@ def test_install_opencode_project(project_dir: Path) -> None:
     result = install_skill("opencode", scope="project", project_dir=project_dir)
 
     assert result.exists()
-    assert result == project_dir / ".opencode" / "skills" / "graphrag-mcp" / "SKILL.md"
+    assert result == project_dir / ".opencode" / "skills" / "graph-mem" / "SKILL.md"
 
     content = result.read_text(encoding="utf-8")
     assert len(content) > 100
 
 
 def test_install_cursor_project(project_dir: Path) -> None:
-    """Installing cursor at project level creates .cursor/rules/graphrag-mcp.md."""
+    """Installing cursor at project level creates .cursor/rules/graph-mem.md."""
     result = install_skill("cursor", scope="project", project_dir=project_dir)
 
     assert result.exists()
-    assert result == project_dir / ".cursor" / "rules" / "graphrag-mcp.md"
+    assert result == project_dir / ".cursor" / "rules" / "graph-mem.md"
 
     content = result.read_text(encoding="utf-8")
     assert len(content) > 100
@@ -98,7 +118,7 @@ def test_install_claude_global(home_dir: Path) -> None:
     result = install_skill("claude", scope="global")
 
     assert result.exists()
-    assert result == home_dir / ".claude" / "skills" / "graphrag-mcp" / "SKILL.md"
+    assert result == home_dir / ".claude" / "skills" / "graph-mem" / "SKILL.md"
 
     content = result.read_text(encoding="utf-8")
     assert len(content) > 100
@@ -125,7 +145,7 @@ def test_install_gemini_project_section(project_dir: Path) -> None:
     content = result.read_text(encoding="utf-8")
     assert _SECTION_BEGIN in content
     assert _SECTION_END in content
-    assert "graphrag" in content.lower()
+    assert "graph-mem" in content.lower()
 
 
 def test_install_section_replaces(project_dir: Path) -> None:
@@ -141,16 +161,15 @@ def test_install_section_replaces(project_dir: Path) -> None:
     assert content.count(_SECTION_END) == 1
 
 
-def test_install_windsurf_section(project_dir: Path) -> None:
-    """Windsurf uses section method, writing into AGENTS.md."""
+def test_install_windsurf_project(project_dir: Path) -> None:
+    """Windsurf uses overwrite method, writing into .windsurf/rules/."""
     result = install_skill("windsurf", scope="project", project_dir=project_dir)
 
     assert result.exists()
-    assert result == project_dir / "AGENTS.md"
+    assert result == project_dir / ".windsurf" / "rules" / "graph-mem.md"
 
     content = result.read_text(encoding="utf-8")
-    assert _SECTION_BEGIN in content
-    assert _SECTION_END in content
+    assert "graph-mem" in content.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -240,13 +259,13 @@ def test_install_all_domains_valid(project_dir: Path) -> None:
         path = install_skill("opencode", scope="project", project_dir=project_dir, domain=domain)
         content = path.read_text(encoding="utf-8")
         # Core skill content should always be present regardless of domain
-        assert "graphrag-mcp" in content.lower() or "knowledge graph" in content.lower()
+        assert "graph-mem" in content.lower() or "knowledge graph" in content.lower()
         assert len(content) > 200  # non-trivial
 
 
 def test_install_skill_no_domain_leakage(project_dir: Path) -> None:
     """Core skill (no domain overlay) should not contain domain-specific entity types."""
-    from graphrag_mcp.cli.install import _assemble_skill_content
+    from graph_mem.cli.install import _assemble_skill_content
 
     # The core content assembled with general domain should not mention
     # code-specific types like 'module' or 'function' in its entity type lists

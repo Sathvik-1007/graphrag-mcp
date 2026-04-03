@@ -1,4 +1,4 @@
-"""Tests for graphrag_mcp.db.schema migrations."""
+"""Tests for graph_mem.db.schema migrations."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ if TYPE_CHECKING:
 
 import pytest_asyncio
 
-from graphrag_mcp.db.connection import Database
-from graphrag_mcp.db.schema import get_current_version, run_migrations
+from graph_mem.db.connection import Database
+from graph_mem.db.schema import get_current_version, run_migrations
 
 # ---------------------------------------------------------------------------
 # Fixtures

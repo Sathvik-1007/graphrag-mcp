@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 import pytest
 from click.testing import CliRunner
 
-from graphrag_mcp.cli.main import cli
+from graph_mem.cli.main import cli
 
 
 def _extract_json(output: str) -> dict:

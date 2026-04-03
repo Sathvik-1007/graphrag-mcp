@@ -1,21 +1,53 @@
-# graphrag-mcp
+# graph-mem
 
 > Persistent knowledge graph memory for LLM-powered CLI agents
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 
-**No API keys. No cloud provider. No external services.** graphrag-mcp is a fully local MCP server that plugs into any MCP-compatible agent (Claude Code, OpenCode, Codex CLI, Gemini CLI, Cursor, Windsurf, Amp) as a standard tool provider. Install it, add it to your MCP config, and your agent immediately gains persistent memory -- nothing else required.
+**No API keys. No cloud provider. No external services.** graph-mem is a fully local MCP server that plugs into any MCP-compatible agent as a standard tool provider. Install it, add it to your MCP config, and your agent immediately gains persistent memory -- nothing else required.
+
+### Supported Agents
+
+<table>
+<tr>
+<td><b>Claude Code</b></td>
+<td><b>OpenCode</b></td>
+<td><b>Cursor</b></td>
+<td><b>Windsurf</b></td>
+<td><b>Codex CLI</b></td>
+<td><b>Gemini CLI</b></td>
+</tr>
+<tr>
+<td><b>GitHub Copilot</b></td>
+<td><b>Amp</b></td>
+<td><b>Kiro</b></td>
+<td><b>Roo Code</b></td>
+<td><b>Trae</b></td>
+<td><b>Augment</b></td>
+</tr>
+<tr>
+<td><b>Continue</b></td>
+<td><b>Warp</b></td>
+<td><b>KiloCode</b></td>
+<td><b>Qoder</b></td>
+<td><b>CodeBuddy</b></td>
+<td><b>Droid (Factory)</b></td>
+</tr>
+<tr>
+<td colspan="6"><b>Antigravity</b> · and any MCP-compatible agent</td>
+</tr>
+</table>
 
 ---
 
 ## What is this?
 
-LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **graphrag-mcp** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. It runs entirely locally -- no API provider accounts, no cloud dependencies, no Docker containers. Just `pip install graphrag-mcp` and go.
+LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **graph-mem** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. It runs entirely locally -- no API provider accounts, no cloud dependencies, no Docker containers. Just `pip install graph-mem` and go.
 
 ### Why a graph, not just a vector store?
 
-Vector search finds _similar_ things. Graphs find _connected_ things. When an agent asks "what depends on the auth service?", a vector store returns text that mentions auth. A knowledge graph traverses the actual dependency edges and returns every upstream consumer -- even ones that never mention "auth" in their description. graphrag-mcp gives you both: vector similarity for fuzzy discovery, graph traversal for structural queries.
+Vector search finds _similar_ things. Graphs find _connected_ things. When an agent asks "what depends on the auth service?", a vector store returns text that mentions auth. A knowledge graph traverses the actual dependency edges and returns every upstream consumer -- even ones that never mention "auth" in their description. graph-mem gives you both: vector similarity for fuzzy discovery, graph traversal for structural queries.
 
 ---
 
@@ -24,18 +56,18 @@ Vector search finds _similar_ things. Graphs find _connected_ things. When an ag
 Paste this prompt into your agent:
 
 ```
-I want you to give yourself persistent memory using graphrag-mcp. Run the following:
+I want you to give yourself persistent memory using graph-mem. Run the following:
 
-pip install graphrag-mcp
-graphrag-mcp install opencode    # or: claude, codex, gemini, cursor, windsurf, amp
+pip install graph-mem
+graph-mem install opencode    # or: claude, cursor, windsurf, codex, gemini, copilot, amp, kiro, roocode, trae, augment, continue, warp, kilocode, qoder, codebuddy, droid, antigravity
 
 This installs a skill file that teaches you how to use the 14 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
   "mcpServers": {
-    "graphrag-mcp": {
-      "command": "graphrag-mcp",
+    "graph-mem": {
+      "command": "graph-mem",
       "args": ["server", "--project-dir", "/path/to/your/project"]
     }
   }
@@ -61,14 +93,14 @@ duplicates. Be specific with entity names and types.
 ### Option 1: pip (Recommended)
 
 ```bash
-pip install graphrag-mcp
-graphrag-mcp server
+pip install graph-mem
+graph-mem server
 ```
 
 ### Option 2: uvx (zero pre-install)
 
 ```bash
-uvx graphrag-mcp server
+uvx graph-mem server
 ```
 
 `uvx` downloads the package into an isolated environment and runs it in one command. Nothing to pre-install beyond [uv](https://docs.astral.sh/uv/).
@@ -76,19 +108,19 @@ uvx graphrag-mcp server
 ### Option 3: From source
 
 ```bash
-git clone https://github.com/Sathvik-1007/graphrag-mcp
-cd graphrag-mcp
+git clone https://github.com/Sathvik-1007/GraphMem-MCP
+cd graph-mem
 pip install -e ".[full,dev]"
-graphrag-mcp server
+graph-mem server
 ```
 
 ### Optional extras
 
 ```bash
-pip install "graphrag-mcp[embeddings]"   # sentence-transformers for local embeddings
-pip install "graphrag-mcp[onnx]"         # ONNX runtime for ~3x faster inference
-pip install "graphrag-mcp[ui]"           # aiohttp for interactive graph visualisation
-pip install "graphrag-mcp[full]"         # all of the above
+pip install "graph-mem[embeddings]"   # sentence-transformers for local embeddings
+pip install "graph-mem[onnx]"         # ONNX runtime for ~3x faster inference
+pip install "graph-mem[ui]"           # aiohttp for interactive graph visualisation
+pip install "graph-mem[full]"         # all of the above
 ```
 
 ---
@@ -98,13 +130,25 @@ pip install "graphrag-mcp[full]"         # all of the above
 **1. Install the skill for your agent:**
 
 ```bash
-graphrag-mcp install claude        # Claude Code
-graphrag-mcp install opencode      # OpenCode
-graphrag-mcp install codex         # Codex CLI
-graphrag-mcp install gemini        # Gemini CLI
-graphrag-mcp install cursor        # Cursor
-graphrag-mcp install windsurf      # Windsurf
-graphrag-mcp install amp           # Amp
+graph-mem install claude        # Claude Code
+graph-mem install opencode      # OpenCode
+graph-mem install cursor        # Cursor
+graph-mem install windsurf      # Windsurf
+graph-mem install codex         # Codex CLI
+graph-mem install gemini        # Gemini CLI
+graph-mem install copilot       # GitHub Copilot
+graph-mem install amp           # Amp
+graph-mem install kiro          # Kiro
+graph-mem install roocode       # Roo Code
+graph-mem install trae          # Trae
+graph-mem install augment       # Augment
+graph-mem install continue      # Continue
+graph-mem install warp          # Warp
+graph-mem install kilocode      # KiloCode
+graph-mem install qoder         # Qoder
+graph-mem install codebuddy     # CodeBuddy
+graph-mem install droid         # Droid (Factory)
+graph-mem install antigravity   # Antigravity
 ```
 
 This writes a skill file that teaches your agent how to use all 14 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
@@ -114,8 +158,8 @@ This writes a skill file that teaches your agent how to use all 14 MCP tools -- 
 ```json
 {
   "mcpServers": {
-    "graphrag-mcp": {
-      "command": "graphrag-mcp",
+    "graph-mem": {
+      "command": "graph-mem",
       "args": ["server"]
     }
   }
@@ -127,8 +171,8 @@ With full customization:
 ```json
 {
   "mcpServers": {
-    "graphrag-mcp": {
-      "command": "graphrag-mcp",
+    "graph-mem": {
+      "command": "graph-mem",
       "args": [
         "server",
         "--project-dir", "/path/to/my/project",
@@ -148,7 +192,7 @@ That's it. Your agent now has persistent memory.
 
 ## Features
 
-graphrag-mcp exposes 14 MCP tools -- six for writing, seven for reading, and one utility:
+graph-mem exposes 14 MCP tools -- six for writing, seven for reading, and one utility:
 
 ### Write Tools
 
@@ -184,18 +228,18 @@ graphrag-mcp exposes 14 MCP tools -- six for writing, seven for reading, and one
 ## Architecture
 
 ```
-Agent (Claude/Codex/Gemini/OpenCode)
+Agent (Claude/Cursor/Windsurf/OpenCode/Codex/Gemini/Copilot/...)
   |
   | MCP Protocol (stdio or SSE)
   v
-graphrag-mcp server
+graph-mem server
   |-- Graph Engine ---- entity/relationship/observation CRUD
   |-- Semantic Engine -- sentence-transformers embeddings + hybrid search
   |-- UI Server ------- interactive graph explorer (aiohttp + React SPA)
-  '-- Storage --------- pluggable backend (SQLite default, .graphrag/graph.db)
+  '-- Storage --------- pluggable backend (SQLite default, .graphmem/graph.db)
 ```
 
-Everything lives in a single SQLite database per project. No external services, no Docker containers, no API keys. The server communicates over MCP's standard stdio transport (SSE also supported) and stores all data in `.graphrag/graph.db` at your project root.
+Everything lives in a single SQLite database per project. No external services, no Docker containers, no API keys. The server communicates over MCP's standard stdio transport (SSE also supported) and stores all data in `.graphmem/graph.db` at your project root.
 
 The database file is portable -- copy it between machines, check it into version control, or back it up like any other file.
 
@@ -203,9 +247,9 @@ The database file is portable -- copy it between machines, check it into version
 
 ## MCP Integration
 
-graphrag-mcp is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 14 tools that the agent can call directly.
+graph-mem is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 14 tools that the agent can call directly.
 
-**What this means in practice:** once you add graphrag-mcp to your agent's MCP config, the agent sees 14 new tools (`add_entities`, `search_nodes`, `find_connections`, `open_dashboard`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+**What this means in practice:** once you add graph-mem to your agent's MCP config, the agent sees 14 new tools (`add_entities`, `search_nodes`, `find_connections`, `open_dashboard`, etc.) in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics (entity count, relationship count, etc.).
 
@@ -213,18 +257,18 @@ To verify it's working, ask your agent to run `read_graph()` -- it should return
 
 ## Data Storage
 
-By default, graphrag-mcp stores its database at `.graphrag/graph.db` relative to the current working directory. You can control this with:
+By default, graph-mem stores its database at `.graphmem/graph.db` relative to the current working directory. You can control this with:
 
 | Method | Example | Result |
 |--------|---------|--------|
-| `--project-dir` | `--project-dir /home/user/myproject` | Stores at `/home/user/myproject/.graphrag/graph.db` |
+| `--project-dir` | `--project-dir /home/user/myproject` | Stores at `/home/user/myproject/.graphmem/graph.db` |
 | `--db` | `--db /custom/path/memory.db` | Stores at exactly that path |
-| `GRAPHRAG_DB_PATH` env | `export GRAPHRAG_DB_PATH=/tmp/test.db` | Stores at that path |
-| Default | (nothing) | `.graphrag/graph.db` relative to CWD |
+| `GRAPHMEM_DB_PATH` env | `export GRAPHMEM_DB_PATH=/tmp/test.db` | Stores at that path |
+| Default | (nothing) | `.graphmem/graph.db` relative to CWD |
 
-**Priority order:** `--db` > `--project-dir` > `GRAPHRAG_DB_PATH` env var > default.
+**Priority order:** `--db` > `--project-dir` > `GRAPHMEM_DB_PATH` env var > default.
 
-The `.graphrag/` directory is automatically created if it doesn't exist. Add `.graphrag/` to your `.gitignore` if you don't want to track the database in version control.
+The `.graphmem/` directory is automatically created if it doesn't exist. Add `.graphmem/` to your `.gitignore` if you don't want to track the database in version control.
 
 ---
 
@@ -254,7 +298,7 @@ When no embedding model is installed, search gracefully degrades to FTS-only mod
 
 ### Entity Resolution
 
-When the agent references an entity by name, graphrag-mcp resolves it through a cascade:
+When the agent references an entity by name, graph-mem resolves it through a cascade:
 
 1. **Exact match** -- case-sensitive name lookup.
 2. **Case-insensitive match** -- normalized comparison.
@@ -268,19 +312,19 @@ When the agent references an entity by name, graphrag-mcp resolves it through a 
 ### Server
 
 ```bash
-graphrag-mcp server                          # stdio transport (default)
-graphrag-mcp server --transport sse          # SSE transport
-graphrag-mcp server --db /path/to/graph.db   # custom database path
-graphrag-mcp server --project-dir /my/project  # store memory in <dir>/.graphrag/
+graph-mem server                          # stdio transport (default)
+graph-mem server --transport sse          # SSE transport
+graph-mem server --db /path/to/graph.db   # custom database path
+graph-mem server --project-dir /my/project  # store memory in <dir>/.graphmem/
 
 # Embedding customization
-graphrag-mcp server --embedding-model sentence-transformers/all-mpnet-base-v2
-graphrag-mcp server --no-onnx --embedding-device cuda
-graphrag-mcp server --cache-size 50000
+graph-mem server --embedding-model sentence-transformers/all-mpnet-base-v2
+graph-mem server --no-onnx --embedding-device cuda
+graph-mem server --cache-size 50000
 
 # Tuning
-graphrag-mcp server --search-limit 20 --max-hops 6
-graphrag-mcp server --log-level DEBUG
+graph-mem server --search-limit 20 --max-hops 6
+graph-mem server --log-level DEBUG
 ```
 
 All server options:
@@ -288,8 +332,8 @@ All server options:
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--transport` | `stdio`, `sse`, or `streamable-http` | `stdio` |
-| `--db` | Path to SQLite database file | `.graphrag/graph.db` |
-| `--project-dir` | Project root; DB at `<dir>/.graphrag/graph.db` | CWD |
+| `--db` | Path to SQLite database file | `.graphmem/graph.db` |
+| `--project-dir` | Project root; DB at `<dir>/.graphmem/graph.db` | CWD |
 | `--host` | Bind address (SSE/HTTP only) | `127.0.0.1` |
 | `--port` | Port (SSE/HTTP only) | `8080` |
 | `--embedding-model` | HuggingFace model ID for embeddings | `all-MiniLM-L6-v2` |
@@ -303,24 +347,24 @@ All server options:
 ### Skill Installation
 
 ```bash
-graphrag-mcp install <agent>                 # project-level install
-graphrag-mcp install <agent> --global        # global/user-level install
-graphrag-mcp install <agent> --domain code   # use domain overlay (code, research, general)
+graph-mem install <agent>                 # project-level install
+graph-mem install <agent> --global        # global/user-level install
+graph-mem install <agent> --domain code   # use domain overlay (code, research, general)
 ```
 
-Supported agents: `claude`, `opencode`, `codex`, `gemini`, `cursor`, `windsurf`, `amp`.
+Supported agents: `claude`, `opencode`, `cursor`, `windsurf`, `codex`, `gemini`, `copilot`, `amp`, `kiro`, `roocode`, `trae`, `augment`, `continue`, `warp`, `kilocode`, `qoder`, `codebuddy`, `droid`, `antigravity`.
 
 ### Graph Management
 
 ```bash
-graphrag-mcp init                            # create .graphrag/ directory
-graphrag-mcp init --project-dir /my/project  # create in specific directory
-graphrag-mcp status                          # print graph statistics
-graphrag-mcp status --json                   # graph statistics as JSON
-graphrag-mcp export --format json            # export entire graph
-graphrag-mcp export --output backup.json     # export to file
-graphrag-mcp import graph.json               # import graph from file
-graphrag-mcp validate                        # run integrity checks
+graph-mem init                            # create .graphmem/ directory
+graph-mem init --project-dir /my/project  # create in specific directory
+graph-mem status                          # print graph statistics
+graph-mem status --json                   # graph statistics as JSON
+graph-mem export --format json            # export entire graph
+graph-mem export --output backup.json     # export to file
+graph-mem import graph.json               # import graph from file
+graph-mem validate                        # run integrity checks
 ```
 
 All management commands accept `--db` and `--project-dir` for targeting a specific database.
@@ -328,9 +372,9 @@ All management commands accept `--db` and `--project-dir` for targeting a specif
 ### Graph Visualisation UI
 
 ```bash
-graphrag-mcp ui                              # open interactive graph explorer
-graphrag-mcp ui --no-open                    # start server without opening browser
-graphrag-mcp ui --port 9090                  # use a specific port
+graph-mem ui                              # open interactive graph explorer
+graph-mem ui --no-open                    # start server without opening browser
+graph-mem ui --port 9090                  # use a specific port
 ```
 
 The `open_dashboard` MCP tool also starts this UI server and returns the URL directly to your agent -- no browser auto-open, just a link you can visit when ready.
@@ -339,26 +383,26 @@ The `open_dashboard` MCP tool also starts this UI server and returns the URL dir
 
 ## Configuration
 
-All settings are optional. Defaults work out of the box. Every setting can be controlled via CLI flags (see `graphrag-mcp server --help`), environment variables, or both. CLI flags take precedence over environment variables, which take precedence over defaults.
+All settings are optional. Defaults work out of the box. Every setting can be controlled via CLI flags (see `graph-mem server --help`), environment variables, or both. CLI flags take precedence over environment variables, which take precedence over defaults.
 
 | Environment Variable | CLI Flag | Default | Description |
 |---------------------|----------|---------|-------------|
-| `GRAPHRAG_DB_PATH` | `--db` | `.graphrag/graph.db` | Database file path |
-| `GRAPHRAG_BACKEND_TYPE` | -- | `sqlite` | Storage backend |
-| `GRAPHRAG_EMBEDDING_MODEL` | `--embedding-model` | `all-MiniLM-L6-v2` | HuggingFace model ID |
-| `GRAPHRAG_USE_ONNX` | `--use-onnx / --no-onnx` | `true` | Use ONNX runtime if available |
-| `GRAPHRAG_EMBEDDING_DEVICE` | `--embedding-device` | `cpu` | Inference device (`cpu` or `cuda`) |
-| `GRAPHRAG_CACHE_SIZE` | `--cache-size` | `10000` | Embedding cache max entries |
-| `GRAPHRAG_SEARCH_LIMIT` | `--search-limit` | `10` | Default search result limit |
-| `GRAPHRAG_MAX_HOPS` | `--max-hops` | `4` | Default max traversal depth |
-| `GRAPHRAG_LOG_LEVEL` | `--log-level` | `WARNING` | Logging verbosity |
-| `GRAPHRAG_TRANSPORT` | `--transport` | `stdio` | MCP transport protocol |
+| `GRAPHMEM_DB_PATH` | `--db` | `.graphmem/graph.db` | Database file path |
+| `GRAPHMEM_BACKEND_TYPE` | -- | `sqlite` | Storage backend |
+| `GRAPHMEM_EMBEDDING_MODEL` | `--embedding-model` | `all-MiniLM-L6-v2` | HuggingFace model ID |
+| `GRAPHMEM_USE_ONNX` | `--use-onnx / --no-onnx` | `true` | Use ONNX runtime if available |
+| `GRAPHMEM_EMBEDDING_DEVICE` | `--embedding-device` | `cpu` | Inference device (`cpu` or `cuda`) |
+| `GRAPHMEM_CACHE_SIZE` | `--cache-size` | `10000` | Embedding cache max entries |
+| `GRAPHMEM_SEARCH_LIMIT` | `--search-limit` | `10` | Default search result limit |
+| `GRAPHMEM_MAX_HOPS` | `--max-hops` | `4` | Default max traversal depth |
+| `GRAPHMEM_LOG_LEVEL` | `--log-level` | `WARNING` | Logging verbosity |
+| `GRAPHMEM_TRANSPORT` | `--transport` | `stdio` | MCP transport protocol |
 
 ---
 
 ## Performance
 
-graphrag-mcp is optimized for low-latency, single-user workloads typical of CLI agent usage:
+graph-mem is optimized for low-latency, single-user workloads typical of CLI agent usage:
 
 - **WAL mode + PRAGMA tuning** -- concurrent reads with fast writes, optimized journal and cache settings.
 - **ONNX-optimized embeddings** -- ~3x faster inference than default PyTorch, with automatic fallback.
@@ -375,8 +419,8 @@ graphrag-mcp is optimized for low-latency, single-user workloads typical of CLI 
 ### Setup
 
 ```bash
-git clone https://github.com/Sathvik-1007/graphrag-mcp
-cd graphrag-mcp
+git clone https://github.com/Sathvik-1007/GraphMem-MCP
+cd graph-mem
 
 # Using uv (recommended)
 uv venv
@@ -406,13 +450,13 @@ pytest -x -q                      # stop on first failure, quiet output
 ### Project Structure
 
 ```
-src/graphrag_mcp/
+src/graph_mem/
   __init__.py              # package version
-  __main__.py              # python -m graphrag_mcp support
+  __main__.py              # python -m graph_mem support
   server.py                # MCP server entry point and 14 tool definitions
   cli/
     main.py                # Click CLI: server, init, status, export, import, validate, ui
-    install.py             # Skill installer for 7 agent types
+    install.py             # Skill installer for 19 agent types
   db/
     connection.py          # Database class (aiosqlite, WAL, PRAGMA tuning)
     schema.py              # Migration runner + version tracking
@@ -446,11 +490,11 @@ src/graphrag_mcp/
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=Sathvik-1007%2Fgraphrag-mcp&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=Sathvik-1007%2FGraphMem-MCP&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=Sathvik-1007/graphrag-mcp&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=Sathvik-1007/graphrag-mcp&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=Sathvik-1007/graphrag-mcp&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=Sathvik-1007/GraphMem-MCP&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=Sathvik-1007/GraphMem-MCP&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=Sathvik-1007/GraphMem-MCP&type=date&legend=top-left" />
  </picture>
 </a>
 

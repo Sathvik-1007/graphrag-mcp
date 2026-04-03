@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 import pytest
 from click.testing import CliRunner
 
-from graphrag_mcp.cli.main import cli
+from graph_mem.cli.main import cli
 
 
 def _extract_json(output: str) -> dict:
@@ -33,7 +33,7 @@ def runner() -> CliRunner:
 def test_version(runner: CliRunner) -> None:
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "graphrag-mcp" in result.output
+    assert "graph-mem" in result.output
 
 
 def test_init_creates_database(runner: CliRunner, tmp_path: Path) -> None:
