@@ -14,6 +14,8 @@ export interface GraphCanvasProps {
   onSelectNode: (name: string) => void;
   onDeselectNode: () => void;
   onReheat?: () => void;
+  /** Whether sidebar is expanded — affects click-to-center offset */
+  sidebarExpanded?: boolean;
 }
 
 interface TooltipData {
@@ -32,6 +34,7 @@ export default function GraphCanvas({
   physics,
   onSelectNode,
   onDeselectNode,
+  sidebarExpanded,
 }: GraphCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ForceEngine>(new ForceEngine());
@@ -41,6 +44,10 @@ export default function GraphCanvas({
   const initialFitDoneRef = useRef(false);
   const anchorIdRef = useRef<string | null>(null);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+
+  // ── Click-to-center animation state ──
+  const panAnimRef = useRef<{ tx: number; ty: number } | null>(null);
+  const selectedAnimRef = useRef(0);
 
   // Drag state — separate clickStart (never mutated) from panLast (mutated for pan delta)
   const dragRef = useRef<{
@@ -56,9 +63,30 @@ export default function GraphCanvas({
   const onSelectRef = useRef(onSelectNode);
   const onDeselectRef = useRef(onDeselectNode);
   const selectedRef = useRef(selectedNodeId);
+  const prevSelectedRef = useRef<string | null>(null);
+  const sidebarExpandedRef = useRef(sidebarExpanded);
   onSelectRef.current = onSelectNode;
   onDeselectRef.current = onDeselectNode;
   selectedRef.current = selectedNodeId;
+  sidebarExpandedRef.current = sidebarExpanded;
+
+  // ── Pan to node when selected externally (sidebar search, detail panel navigation) ──
+  useEffect(() => {
+    if (selectedNodeId && selectedNodeId !== prevSelectedRef.current) {
+      const engine = engineRef.current;
+      const node = engine.nodes.find((n) => n.id === selectedNodeId);
+      if (node) {
+        const sidebarPx = sidebarExpandedRef.current ? 300 : 48;
+        const sidebarWorldOffset = sidebarPx / 2 / viewRef.current.zoom;
+        panAnimRef.current = {
+          tx: -node.x + sidebarWorldOffset,
+          ty: -node.y,
+        };
+        selectedAnimRef.current = 1.0;
+      }
+    }
+    prevSelectedRef.current = selectedNodeId;
+  }, [selectedNodeId]);
 
   // ── Build simulation graph when data changes ──
   useEffect(() => {
@@ -176,9 +204,34 @@ export default function GraphCanvas({
       const engine = engineRef.current;
       engine.tick();
 
+      // ── Smooth pan animation (click-to-center) ──
+      const panAnim = panAnimRef.current;
+      if (panAnim) {
+        const view = viewRef.current;
+        const dx = panAnim.tx - view.x;
+        const dy = panAnim.ty - view.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 0.15) {
+          // Snap when close enough
+          view.x = panAnim.tx;
+          view.y = panAnim.ty;
+          panAnimRef.current = null;
+        } else {
+          // Lerp toward target
+          view.x += dx * 0.10;
+          view.y += dy * 0.10;
+        }
+      }
+
+      // ── Decay selection pulse ring animation ──
+      if (selectedAnimRef.current > 0) {
+        selectedAnimRef.current = Math.max(0, selectedAnimRef.current - 0.028);
+      }
+
       const state: RenderState = {
         hoveredNode: hoveredRef.current,
         selectedNode: selectedRef.current,
+        selectedAnim: selectedAnimRef.current,
         adj: engine.adj,
       };
 
@@ -205,6 +258,7 @@ export default function GraphCanvas({
 
     function onWheel(e: WheelEvent) {
       e.preventDefault();
+      panAnimRef.current = null; // Cancel pan animation on zoom
       const view = viewRef.current;
       const rect = canvas!.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -230,6 +284,9 @@ export default function GraphCanvas({
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Cancel any in-progress pan animation when user starts interacting
+    panAnimRef.current = null;
 
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -338,9 +395,23 @@ export default function GraphCanvas({
         drag.node.pinned = false;
       }
 
-      // Click (not drag) → select
+      // Click (not drag) → select + animate pan-to-center
       if (dist < 4) {
-        onSelectRef.current(drag.node.id);
+        const nd = drag.node;
+        onSelectRef.current(nd.id);
+
+        // Compute sidebar offset in world coords
+        // When sidebar is expanded, the visual center shifts right by half the sidebar width
+        const sidebarPx = sidebarExpandedRef.current ? 300 : 48;
+        const sidebarWorldOffset = sidebarPx / 2 / viewRef.current.zoom;
+
+        // Animate pan so the node ends up at the visual center
+        panAnimRef.current = {
+          tx: -nd.x + sidebarWorldOffset,
+          ty: -nd.y,
+        };
+        // Trigger pulse ring animation
+        selectedAnimRef.current = 1.0;
       }
     } else if (drag.panning && dist < 4) {
       // Click on empty canvas → deselect

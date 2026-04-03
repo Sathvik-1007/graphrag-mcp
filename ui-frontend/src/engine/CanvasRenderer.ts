@@ -23,6 +23,8 @@ export interface ViewTransform {
 export interface RenderState {
   hoveredNode: SimNode | null;
   selectedNode: string | null;
+  /** Animation progress for selection pulse ring (1.0 → 0.0) */
+  selectedAnim: number;
   adj: Map<string, Set<string>>;
 }
 
@@ -207,7 +209,7 @@ function drawNodes(
   state: RenderState,
   light: boolean,
 ): void {
-  const { hoveredNode, selectedNode } = state;
+  const { hoveredNode, selectedNode, selectedAnim } = state;
   const labelColor = cssVar("--canvas-label") || "rgba(200,199,196,0.7)";
   const labelActiveColor = cssVar("--canvas-label-active") || "#ffffff";
 
@@ -230,10 +232,19 @@ function drawNodes(
 
     const glowR = r * (isHovered || isSelected ? 4 : nd.degree > 1 ? 2.8 : 1.5);
 
-    // Light mode: colored halo border instead of shadow/glow
+    // Light mode: subtle drop shadow for hovered/selected nodes
     // Dark mode: radial glow halo
     if (light) {
-      // No radial gradient shadow — just skip the glow in light mode
+      if (isHovered || isSelected) {
+        ctx.save();
+        ctx.shadowColor = nd.strokeColor;
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = "rgba(0,0,0,0)";
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     } else if (nd.degree > 0 || isHovered || isSelected) {
       const grd = ctx.createRadialGradient(nd.x, nd.y, r * 0.3, nd.x, nd.y, glowR);
       grd.addColorStop(0, nd.glowColor);
@@ -268,6 +279,32 @@ function drawNodes(
       ctx.beginPath();
       ctx.arc(nd.x + r * 0.65, nd.y - r * 0.65, 2.5 / view.zoom, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    // ── Pulse ring animation for selected node ──
+    if (isSelected && selectedAnim > 0) {
+      ctx.save();
+      // Primary ring — teal, expanding outward
+      const ringProgress = 1 - selectedAnim;
+      const primaryRadius = r + ringProgress * r * 5;
+      const primaryAlpha = selectedAnim * 0.6;
+      ctx.strokeStyle = light
+        ? `rgba(79,152,163,${primaryAlpha})`
+        : `rgba(79,152,163,${primaryAlpha})`;
+      ctx.lineWidth = (2.5 / view.zoom) * selectedAnim;
+      ctx.beginPath();
+      ctx.arc(nd.x, nd.y, primaryRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Secondary ring — gold, tighter expansion
+      const secondaryRadius = r + ringProgress * r * 2.5;
+      const secondaryAlpha = selectedAnim * 0.45;
+      ctx.strokeStyle = `rgba(232,175,52,${secondaryAlpha})`;
+      ctx.lineWidth = (1.8 / view.zoom) * selectedAnim;
+      ctx.beginPath();
+      ctx.arc(nd.x, nd.y, secondaryRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Label — progressive visibility based on zoom and node degree

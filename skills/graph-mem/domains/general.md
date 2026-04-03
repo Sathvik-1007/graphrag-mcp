@@ -1,11 +1,11 @@
 # Domain: General Purpose
 
-When managing general knowledge, personal projects, business context, or any domain
-not covered by a specific overlay.
+For general knowledge, personal projects, business context, or any domain
+without a specific overlay.
 
 ## Entity Types
 
-In addition to the core types (`plan`, `implementation`, `decision`, `problem`):
+Beyond the core types (`plan`, `implementation`, `decision`, `problem`):
 
 | Type | When to Use |
 |------|-------------|
@@ -25,21 +25,21 @@ In addition to the core types (`plan`, `implementation`, `decision`, `problem`):
 |------|-----------|---------|
 | `RELATES_TO` | General association | `Concept A` → `Concept B` |
 | `PART_OF` | Membership or containment | `Alice` → `Engineering Team` |
-| `CAUSED_BY` | Causal relationships | `Incident` → `Config Change` |
-| `LOCATED_IN` | Spatial relationships | `Office` → `San Francisco` |
-| `CREATED_BY` | Authorship or creation | `Document` → `Alice` |
-| `OCCURRED_AT` | Event-place link | `Standup Meeting` → `Conference Room A` |
+| `CAUSED_BY` | Causal link | `Incident` → `Config Change` |
+| `LOCATED_IN` | Spatial link | `Office` → `San Francisco` |
+| `CREATED_BY` | Authorship | `Document` → `Alice` |
+| `OCCURRED_AT` | Event-place link | `Standup` → `Conference Room A` |
 | `PARTICIPATED_IN` | Person-event link | `Alice` → `Quarterly Review` |
 | `WORKS_AT` | Person-organization link | `Alice` → `Acme Corp` |
 | `SUPERSEDES` | Newer replaces older | `Policy v2` → `Policy v1` |
 
-## Extraction Heuristics
+## Extraction Guidance
 
-- Store plans before starting any significant task, even non-technical ones
-- Record implementation outcomes to close the plan → implementation loop
-- Use the most specific entity type — prefer `event` over `concept` for things that happened
-- Include temporal information in observations ("The meeting occurred on 2026-03-15")
+- Create plans before any significant task, even non-technical ones
+- Record outcomes to close the plan → implementation loop
+- Prefer specific types — `event` over `concept` for things that happened
+- Include temporal info in observations ("meeting occurred on 2026-03-15")
 - Link people to organizations and events they participated in
-- Store meeting notes as observations on the meeting entity, not as raw transcripts
-- Track project milestones as observations on the project entity with dates
-- When learning a new topic, create a `topic` entity and link related concepts to it
+- Store meeting takeaways as observations, not raw transcripts
+- Track milestones as dated observations on the project entity
+- When learning a topic, create a `topic` entity and link related concepts to it

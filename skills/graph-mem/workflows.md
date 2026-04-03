@@ -1,139 +1,127 @@
 # Workflows
 
-## The Double-Pass Pipeline (Every Turn)
+## Extraction — After Every Response
 
-This pipeline runs on EVERY conversation turn. No exceptions.
+Once you've responded to the user, shift into extraction mode. This isn't a
+separate task you bolt on — it's the second half of every turn.
 
-### Pass 1: Respond
+### What to look for
 
-Do your normal work. Answer the question, write the code, debug the issue. Focus
-100% on the user's request. Do not split attention to the graph during this pass.
-
-### Pass 2: Extract and Store
-
-After your response is complete, enter extraction mode. This is a systematic process,
-not a vague "store what feels important."
-
-#### Step 1: Entity Extraction
-
-Scan the conversation turn (both user message and your response) for:
+Scan the conversation turn — both what the user said and what you responded —
+for anything worth persisting:
 
 - **People** mentioned by name or role
-- **Systems, services, or tools** discussed or used
-- **Concepts or ideas** introduced or referenced
-- **Decisions** made (with rationale)
-- **Problems** identified (with root cause if known)
-- **Plans** formulated (with steps)
-- **Implementations** completed (with outcomes)
-- **Artifacts** created or modified (files, configs, documents)
+- **Systems, services, tools** discussed, used, or referenced
+- **Concepts, ideas, methods** introduced or explained
+- **Decisions** made, with the reasoning behind them
+- **Problems** identified, especially with root causes
+- **Plans** formulated, with their goals and constraints
+- **Outcomes** of completed work — what happened, what deviated
+- **Artifacts** created or modified — files, configs, documents, endpoints
 
-For each candidate entity, ask: "Would a future session benefit from knowing this
-exists?" If yes, it's an entity.
+The test: "Would a future session benefit from knowing this exists?" If yes,
+it belongs in the graph.
 
-#### Step 2: Deduplication Check
+### Before creating anything — search first
 
-For EVERY candidate entity, run `search_nodes("entity name")` before creating it.
+For every entity you're about to create, run `search_nodes` with its name. This
+is the single most important habit. Duplicates fragment knowledge and make search
+unreliable.
 
-- **Exact match found**: Add new observations to the existing entity. Update its
-  description if the current one is stale.
-- **Similar match found**: Decide whether this is the same entity (→ add observations)
-  or genuinely different (→ create new entity with a more specific name).
-- **No match**: Create the entity with `add_entities`.
+- **Exact match**: Add new observations to the existing entity. Update its
+  description if it's gone stale.
+- **Similar match**: Decide — is this the same thing? If so, add observations.
+  If genuinely different, create it with a more specific name.
+- **No match**: Create it with `add_entities`.
 
-**Never skip this step.** Duplicates fragment knowledge and make search unreliable.
+### Formulate observations
 
-#### Step 3: Observation Formulation
+For each entity — new or existing — pull out the atomic facts from this turn.
+What was said about it? What changed? What was decided? What was discovered?
 
-For each entity (new or existing), extract atomic facts from this turn:
+One sentence, one fact. Include dates, numbers, specifics. A vague observation
+is barely better than no observation.
 
-- What was said about it?
-- What changed about it?
-- What was decided about it?
-- What was discovered about it?
+### Map relationships
 
-Each observation = one sentence, one fact. Include dates, numbers, file paths,
-and specific details. Vague observations are worthless.
+Think about how the entities from this turn connect — to each other and to
+entities already in the graph. Does A depend on B? Did A cause B? Is A part of
+B? Did person A create B?
 
-#### Step 4: Relationship Mapping
+Create edges with `add_relationships`. Use weight < 1.0 for relationships you're
+not fully certain about.
 
-For each pair of entities discussed this turn, determine if a relationship exists:
+### Self-check before moving on
 
-- Does entity A depend on, use, or require entity B?
-- Did entity A cause, fix, or address entity B?
-- Is entity A part of, or contained by, entity B?
-- Did person A create, author, or approve entity B?
+Before you leave extraction mode, interrogate your work. Ask yourself:
 
-Create edges with `add_relationships`. Use the relationship types from conventions.md.
-Set weight < 1.0 for uncertain or tentative relationships.
+- Did I miss any entities that were mentioned or implied?
+- Are my entity types accurate — or could a more specific type fit better?
+- Are there implicit relationships I didn't capture? (Co-occurrence in the same
+  sentence often signals a relationship.)
+- Did I store a conclusion without the reasoning that led to it?
+- If a fresh agent started with only this graph, could they reconstruct what
+  happened and why?
+- Are any existing descriptions now outdated based on what was discussed?
 
-#### Step 5: Socratic Self-Check
+Keep asking until every answer is "yes, I got that." If something feels off,
+go back and fix it. This self-check catches what casual extraction misses.
 
-Before ending the extraction pass, interrogate your work:
+## Starting a Session
 
-| Question | If "no" or "unsure"... |
-|----------|----------------------|
-| Did I capture every entity mentioned or implied? | Re-scan the turn for missed entities |
-| Are my entity types accurate and specific? | Reclassify (e.g., `concept` → `method`) |
-| Did I miss any implicit relationships? | Check if entities discussed together are connected |
-| Did I store conclusions without their reasoning? | Add observations with rationale |
-| Could a fresh agent reconstruct context from this? | Add more observations or fix descriptions |
-| Are any existing descriptions now stale? | `update_entity` to refresh them |
+Before doing any work, recall what the graph already knows:
 
-This step catches the 20% of information that casual extraction misses.
+```
+read_graph                          → graph overview (counts, types, recent)
+search_nodes("task-relevant query") → find related entities
+get_entity("RelevantEntity")        → full context with observations + edges
+find_connections("KeyEntity")       → explore the neighborhood
+```
 
-## Session Start Workflow
+A cold start is a wasted start. Prior decisions, context, and lessons learned
+are invisible unless you look for them.
 
-Before diving into any task, warm-start your memory:
+## Ending a Session
 
-1. `read_graph` — Understand what's in the graph (counts, types, recent entities)
-2. `search_nodes("task-relevant query")` — Find related entities
-3. `get_entity("TopResult")` — Load full context with observations and relationships
-4. `find_connections("KeyEntity")` if you need to understand the neighborhood
+Before the session ends:
 
-**Why:** Without recall, you start cold. Prior decisions, context, and lessons learned
-are invisible. The graph IS your long-term memory.
+1. Review what you accomplished — anything not yet stored?
+2. Record outcomes of completed work as observations
+3. Update descriptions that no longer reflect reality
+4. Run `read_graph` to verify the graph matches current state
 
-## Session End Workflow
+## Plans and Implementations
 
-Before ending a session:
+Significant tasks should produce a linked pair:
 
-1. **Sweep for unstored facts** — Review what you accomplished. Anything missing?
-2. **Record implementations** — If you completed planned work, create an implementation
-   entity linked to the plan via `IMPLEMENTS`.
-3. **Update stale descriptions** — If any entity's description no longer reflects reality,
-   fix it.
-4. **Final verification** — `read_graph` to confirm the graph reflects current state.
+A **plan** entity (type: `plan`) created before work begins — observations
+capture goals, constraints, acceptance criteria. Relates to affected entities
+via `TARGETS` or `ADDRESSES`.
 
-## The Plan → Implementation Loop
+An **implementation** entity (type: `implementation`) created after work
+completes — observations capture outcomes, deviations, lessons learned. Links
+to the plan via `IMPLEMENTS` and to modified entities via `MODIFIES`.
 
-Every significant task should produce two linked entities:
+Future sessions search for both to understand *why* something was done (plan)
+and *what actually happened* (implementation).
 
-1. **Plan** (type: `plan`) — Created before work begins
-   - Observations: planned steps, goals, constraints, acceptance criteria
-   - Relationships: `TARGETS` affected entities, `ADDRESSES` problems
+## Handling Duplicates
 
-2. **Implementation** (type: `implementation`) — Created after work completes
-   - Observations: outcomes, deviations from plan, metrics, lessons learned
-   - Relationships: `IMPLEMENTS` the plan, `MODIFIES` affected entities
+When you find two entities representing the same thing:
 
-Future sessions search for these to understand both *why* (plan) and *what happened*
-(implementation).
-
-## Duplicate Discovery
-
-When you find two entities that represent the same thing:
-
-1. `get_entity` on both — Review observations and relationships
-2. Verify they represent the same real-world concept (not just similar names)
-3. `merge_entities(source, target)` — Source is absorbed into target
-4. `update_entity` on the merged entity if the description needs refinement
+1. `get_entity` on both — compare observations and relationships
+2. Confirm they genuinely represent the same real-world concept
+3. `merge_entities(source, target)` — source gets absorbed into target
+4. `update_entity` on the merged result if the description needs refinement
 
 ## Periodic Maintenance
 
 Every few sessions, do a health check:
 
-1. `read_graph` — Review entity counts and type distributions
-2. Look for stale descriptions, orphaned entities, duplicate names
-3. `delete_entities` for anything no longer relevant
-4. `merge_entities` for duplicates that crept in
-5. Check open plans — do any need implementations recorded?
+- `read_graph` — review counts and type distributions
+- Look for stale descriptions, orphaned entities, near-duplicate names
+- `delete_entities` for things no longer relevant
+- `merge_entities` for duplicates that crept in
+- Check open plans — do any need their implementations recorded?
+
+The graph is not an append-only log. It's a living knowledge base. Maintain it.

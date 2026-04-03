@@ -225,6 +225,7 @@ export default function App() {
         physics={physics}
         onSelectNode={handleSelectNode}
         onDeselectNode={handleDeselectNode}
+        sidebarExpanded={sidebarExpanded}
       />
       <Sidebar
         query={query}

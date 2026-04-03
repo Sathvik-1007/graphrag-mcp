@@ -1,160 +1,115 @@
 # Best Practices
 
-## The Extraction Imperative
+## Why Extraction Gets Skipped
 
-The knowledge graph is only as good as what you put into it. The single biggest failure
-mode is skipping extraction — either entirely or partially. This section exists to make
-that failure mode impossible.
-
-### Red Flags — Stop and Extract
-
-If you catch yourself thinking any of these, you MUST stop and run the extraction pass:
+The biggest failure mode is not extracting. Here's how the rationalization sounds
+and why it's wrong:
 
 | Thought | Reality |
 |---------|---------|
-| "This turn isn't important enough" | Every turn has extractable information. |
-| "I'll store it at the end of the session" | You'll forget details. Store now. |
-| "This is just a simple answer" | Simple answers contain facts worth persisting. |
-| "The user didn't ask me to remember this" | Extraction is automatic, not user-triggered. |
-| "I already know this from the graph" | If something changed or was confirmed, record that. |
-| "There's nothing new here" | Confirmations, clarifications, and corrections are all facts. |
-| "I'll remember this without storing it" | You won't. Next session starts fresh. |
+| "This turn isn't important enough" | Every turn has extractable information |
+| "I'll store it at the end" | You'll forget the details. Store now |
+| "This is just a simple answer" | Simple answers contain facts worth persisting |
+| "The user didn't ask me to remember" | Extraction is automatic, not user-triggered |
+| "I already know this from the graph" | If something was confirmed or changed, record that |
+| "There's nothing new here" | Confirmations, clarifications, and corrections are facts |
+| "I'll remember without storing" | You won't. Next session starts fresh |
 
-### What to Extract (Non-Exhaustive)
+If you catch yourself thinking any of these — that is the signal to extract.
+
+## What to Extract
 
 - **Decisions** and their rationale ("Chose X because Y")
-- **Problems** and their root causes
-- **Architecture** discoveries (how systems connect)
+- **Problems** and root causes
+- **Architecture** — how systems, components, or concepts connect
 - **People** and their roles, responsibilities, opinions
 - **Plans** before work begins
-- **Implementations** after work completes, including deviations
-- **Facts** with dates, numbers, and specific details
+- **Implementations** after work completes, including deviations from plan
+- **Facts** with dates, numbers, and specifics
 - **Corrections** to previously stored information
-- **Relationships** between any of the above
 
-### What NOT to Extract
+## What NOT to Extract
 
-- Transient working context (scratch calculations, temporary exploration)
-- Information that changes every session (current file being edited)
-- Raw content dumps (store facts *about* content, not the content itself)
-- Speculative information without marking it as uncertain (use weight < 1.0)
-- Things better handled by version control (exact code diffs)
+- Scratch calculations and temporary exploration
+- Transient state that changes every session (e.g., "currently editing file X")
+- Raw content dumps — store facts *about* content, not the content itself
+- Speculative claims without marking uncertainty (use relationship weight < 1.0)
 
-## The Socratic Self-Check Protocol
+## Observation Quality
 
-After every extraction pass, run this interrogation:
+**Atomic**: One fact per observation. This makes facts independently searchable
+and independently deletable. "Rate limit changed to 500 AND fix was deployed"
+should be two observations.
 
-### 1. Completeness Check
+**Specific**: Include dates, numbers, exact values, names. "Rate limit was
+increased from 100 to 500 req/s on 2026-03-15" beats "rate limit changed."
 
-"Did I capture every entity mentioned or implied in this turn?"
+**Complete sentences**: A future agent reading this observation cold should
+understand the fact without needing surrounding context.
 
-Scan for: proper nouns, system names, technical terms, role references, document
-names, tool names, API endpoints, error messages, and concepts introduced.
+## Description Freshness
 
-### 2. Type Accuracy Check
+Descriptions summarize what an entity IS right now — not its history. When facts
+change, update the description with `update_entity`. A stale description actively
+misleads future sessions.
 
-"Did I assign the most specific and accurate entity type?"
+## Relationship Weights
 
-Common mis-types:
-- `concept` when `method` or `pattern` is more accurate
-- `system` when `module` or `api` is more specific
-- `person` when `organization` or `team` is what was meant
-- `document` when `paper`, `config`, or `artifact` fits better
+- **1.0** (default): Confirmed, definite
+- **0.7–0.9**: High confidence, not definitively confirmed
+- **0.4–0.6**: Moderate confidence, needs verification
+- **0.1–0.3**: Speculative or tentative
 
-### 3. Relationship Completeness Check
+## Choosing the Right Search Tool
 
-"Are there implicit relationships I didn't capture?"
+| You want to find... | Use |
+|---------------------|-----|
+| Entities matching a concept | `search_nodes` |
+| A specific fact in observation text | `search_observations` |
+| Everything about one known entity | `get_entity` |
+| What's connected to an entity | `find_connections` |
+| How two entities relate | `find_paths` |
+| The neighborhood around seed entities | `get_subgraph` |
+| Overall graph state | `read_graph` |
+| Browse all entities | `list_entities` |
 
-Look for:
-- Co-occurrence (two entities discussed in the same sentence → likely related)
-- Causal language ("because", "due to", "as a result" → `CAUSED_BY`)
-- Dependency language ("needs", "requires", "uses" → `DEPENDS_ON`)
-- Hierarchy language ("part of", "within", "belongs to" → `PART_OF`)
+## Granularity
 
-### 4. Reasoning Preservation Check
+**Too fine**: An entity for every minor detail — every variable, every passing
+thought. Store at the level you'd want to recall: systems, decisions, people,
+concepts, key findings.
 
-"Did I store conclusions without their reasoning?"
-
-If you stored "Decision: Use PostgreSQL" but not *why*, add an observation:
-"Chose PostgreSQL over MongoDB because the billing system requires ACID transactions"
-
-### 5. Future Utility Check
-
-"Could a fresh agent reconstruct the context from what I stored?"
-
-Imagine a new session with zero memory except the graph. Would the stored entities,
-observations, and relationships be enough to understand what happened and why?
-
-## Memory Hygiene
-
-### Atomic Observations
-
-One fact per observation. This makes facts independently searchable and deletable.
-
-Bad: "Rate limit was changed to 500 req/s and the deployment was rolled out to prod"
-Good: Two observations — "Rate limit increased to 500 req/s on 2026-03-15" and
-"Rate limit change deployed to production on 2026-03-15"
-
-### Description Freshness
-
-Entity descriptions summarize the current state. When facts change, update the
-description. A stale description is worse than no description — it actively misleads.
-
-### Relationship Weights
-
-- `1.0` (default): Definite, confirmed relationship
-- `0.7–0.9`: High confidence but not definitively confirmed
-- `0.4–0.6`: Moderate confidence, needs verification
-- `0.1–0.3`: Speculative or tentative
-
-### Search Before Store
-
-ALWAYS `search_nodes` before `add_entities`. Duplicates fragment knowledge and degrade
-search quality. This is the single most important hygiene rule.
-
-### Active Maintenance
-
-The graph is not an append-only log. Update descriptions when facts change. Merge
-duplicates when found. Delete entities that are no longer relevant. A maintained graph
-is worth 10x an abandoned one.
-
-## Granularity Guidelines
-
-**Too granular**: Creating entities for every variable name, every minor function,
-every passing thought. Store at the level you'd want to recall — systems, decisions,
-people, concepts, key findings.
-
-**Too coarse**: One entity per project with all facts as observations. Break knowledge
+**Too coarse**: One mega-entity with all facts as observations. Break knowledge
 into meaningful, searchable units.
 
-**Right level**: One entity per significant concept, decision, person, system, or
-milestone. Observations capture the details.
+**Right level**: One entity per significant concept, decision, person, system,
+or milestone. Observations carry the details.
 
 ## Anti-Patterns
 
-| Anti-Pattern | Why It's Bad | Do This Instead |
-|-------------|-------------|-----------------|
-| Skip extraction ("not important") | Graph becomes empty and useless | Extract every turn, no exceptions |
-| Batch writes at session end | You'll forget 80% of the details | Write during Pass 2 of each turn |
+| Pattern | Why It Hurts | Do Instead |
+|---------|-------------|------------|
+| Skip extraction ("not important") | Graph becomes empty and useless | Extract every turn |
+| Batch writes at session end | You forget 80% of the details | Write during extraction each turn |
 | Plans without implementations | Loses outcome context | Always record what happened |
 | Empty descriptions | Unsearchable entities | Write meaningful summaries |
 | Multiple facts per observation | Can't search or delete individually | One fact = one observation |
-| Skip dedup check | Fragments knowledge | Always search_nodes first |
+| Skip dedup check | Fragments knowledge | Always `search_nodes` first |
 | Store raw content dumps | Noise overwhelms signal | Store facts *about* content |
-| Never update or delete | Graph becomes stale | Maintain actively |
+| Never update or delete | Graph goes stale | Maintain actively |
 | Vague observations | Worthless in future sessions | Include dates, numbers, specifics |
-| Generic entity types | Hard to filter and browse | Use the most specific type |
+| Generic entity types | Hard to filter and browse | Use the most specific type that fits |
 
-## Multi-Graph Usage
+## Multiple Graphs
 
-graph-mem supports multiple named graphs stored as separate `.db` files in `~/.graphmem/`.
-Use this for different knowledge domains or projects:
+graph-mem supports named graphs stored as separate databases in `~/.graphmem/`:
 
 ```
 create_graph("project-alpha")    → ~/.graphmem/project-alpha.db
 switch_graph("project-alpha")    → all tools now use this graph
-list_graphs()                    → shows all graphs with counts
-delete_graph("old-project")      → removes the graph file
+list_graphs()                    → shows all graphs with stats
+delete_graph("old-project")      → removes the database file
 ```
 
-CLI flag: `graph-mem server --graph project-alpha`
+Use this for separating knowledge by project or domain. The CLI flag
+`graph-mem server --graph project-alpha` starts the server on a specific graph.

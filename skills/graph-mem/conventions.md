@@ -1,38 +1,39 @@
 # Naming Conventions
 
-Consistent naming makes the knowledge graph searchable, navigable, and mergeable
-across sessions. These conventions are mandatory, not suggestions.
+Consistent naming makes the graph searchable and mergeable across sessions.
 
 ## Entity Names
 
-**Rule: Descriptive, natural, searchable. A future search must find this entity.**
+Names must be descriptive, natural, and findable by search.
 
 | Category | Pattern | Examples |
 |----------|---------|----------|
-| Systems/modules | PascalCase | `AuthService`, `DatabasePool`, `RateLimiter` |
+| Systems / modules | PascalCase | `AuthService`, `DatabasePool` |
 | People | Natural names | `Alice Johnson`, `Dr. Smith` |
-| Papers/documents | Title case | `Attention Is All You Need` |
-| Prefixed workflow | `Prefix: Description` | `Decision: Use PostgreSQL`, `Bug: Memory Leak` |
-| Concepts | Title case | `Transformer Architecture`, `Dependency Injection` |
+| Documents / papers | Title case | `Attention Is All You Need` |
+| Prefixed workflow items | `Prefix: Description` | `Decision: Use PostgreSQL`, `Bug: Memory Leak` |
+| Concepts / ideas | Title case | `Dependency Injection`, `Event Sourcing` |
 
-**Never**: abbreviations that lose meaning (`AS` instead of `AuthService`), bare IDs
-(`#1234`), or generic names (`Thing 1`, `Misc`).
+Avoid abbreviations that lose meaning (`AS` instead of `AuthService`), bare IDs
+(`#1234`), or generic names (`Thing 1`, `Misc`). A future search must find this
+entity by what it actually is.
 
 ## Entity Types
 
-**Rule: Lowercase, singular nouns. Always.**
+Lowercase, singular nouns. Always.
 
-Core types: `person`, `concept`, `system`, `decision`, `event`, `document`, `tool`,
-`plan`, `implementation`, `problem`, `project`
+Use the most specific type that fits. Common types: `person`, `concept`, `system`,
+`decision`, `event`, `document`, `tool`, `plan`, `implementation`, `problem`,
+`project`. Domain overlays add more.
 
-**Never**: `PERSON`, `People`, `person/people`, plural forms, PascalCase types.
+Never: `PERSON`, `People`, plurals, PascalCase types.
 
 ## Relationship Types
 
-**Rule: UPPER_SNAKE_CASE verb phrases describing the direction (source → target).**
+UPPER_SNAKE_CASE verb phrases that read naturally in the direction source → target.
 
-| Category | Types |
-|----------|-------|
+| Category | Examples |
+|----------|---------|
 | Dependencies | `DEPENDS_ON`, `USES`, `REQUIRES` |
 | Authorship | `AUTHORED_BY`, `CREATED_BY`, `OWNED_BY` |
 | Structure | `PART_OF`, `CONTAINS`, `EXTENDS` |
@@ -41,28 +42,28 @@ Core types: `person`, `concept`, `system`, `decision`, `event`, `document`, `too
 | Knowledge | `CITES`, `CONTRADICTS`, `SUPPORTS`, `RELATES_TO` |
 | Temporal | `FOLLOWS_FROM`, `SUPERSEDES`, `PRECEDED_BY` |
 
-**Never**: `depends-on`, `Depends On`, bare nouns like `DEPENDENCY`.
+Never: `depends-on`, `Depends On`, bare nouns like `DEPENDENCY`.
 
 ## Observations
 
-**Rule: Complete sentences. One atomic fact per observation. Include specifics.**
+Complete sentences. One atomic fact per observation. Include specifics — dates,
+numbers, file paths, exact values.
 
 Good:
 - "The API rate limit was increased from 100 to 500 req/s on 2026-03-15"
-- "Alice approved the migration plan during the March standup"
 - "Decided to use PostgreSQL because we need ACID transactions for billing"
 
 Bad:
-- "rate limit stuff changed" (fragment, no specifics)
-- "Rate limit changed AND we deployed the fix" (two facts in one)
-- *Entire paragraph pasted as one observation* (not atomic)
+- "rate limit stuff changed" (vague, no specifics)
+- "Rate limit changed AND we deployed the fix" (two facts crammed into one)
+- An entire paragraph pasted as one observation (not atomic)
 
 ## Descriptions
 
-**Rule: Every entity MUST have a non-empty description. The description summarizes
-what this entity IS, not what happened to it.**
+Every entity must have a non-empty description that says what this entity IS —
+not what happened to it.
 
-Good: "A JWT-based authentication service that handles user login, token refresh,
-and session management"
+Good: "A JWT-based authentication service handling login, token refresh, and
+session management"
 
 Bad: "" (empty), "auth stuff", "The thing we discussed"
