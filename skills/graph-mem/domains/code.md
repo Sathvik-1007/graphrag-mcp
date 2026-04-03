@@ -2,39 +2,46 @@
 
 When working on codebases, software systems, or technical architecture.
 
-## Recommended Entity Types
+## Entity Types
 
-In addition to the core types (`plan`, `implementation`, `decision`):
+In addition to the core types (`plan`, `implementation`, `decision`, `problem`):
 
-- `module` — A code module, service, or major component
-- `function` — An important function or API endpoint (not every function — just key ones)
-- `class` — A significant class or interface
-- `api` — An API endpoint or external service integration
-- `bug` — A notable bug with root cause and fix
-- `dependency` — An external library or service dependency
-- `pattern` — A recurring code pattern or convention
-- `architecture` — A high-level system design or architectural pattern
+| Type | When to Use |
+|------|-------------|
+| `module` | A code module, service, or major component |
+| `function` | A key function or API endpoint (not every function — just important ones) |
+| `class` | A significant class or interface |
+| `api` | An API endpoint or external service integration |
+| `bug` | A notable bug with root cause and fix |
+| `dependency` | An external library or service dependency |
+| `pattern` | A recurring code pattern or convention |
+| `architecture` | A high-level system design or architectural decision |
+| `config` | A configuration setting, environment variable, or deployment parameter |
 
-## Recommended Relationship Types
+## Relationship Types
 
-- `IMPORTS` / `DEPENDS_ON` — Module/package dependencies
-- `CALLS` — Function/method invocations between components
-- `IMPLEMENTS` — Interface/protocol implementations (also: plan→implementation links)
-- `DECIDED_TO` — Links a decision to what it affects
-- `FIXES` — Links a fix to the bug it resolves
-- `USES` — General usage relationship
-- `TARGETS` — Links a plan to the entities it will modify
-- `MODIFIES` — Links an implementation to the entities it changed
-- `INTRODUCES` — Links an implementation to new dependencies added
-- `TESTED_BY` — Links a component to its test suite or test strategy
+| Type | Direction | Example |
+|------|-----------|---------|
+| `IMPORTS` / `DEPENDS_ON` | Module dependencies | `AuthService` → `JWT Library` |
+| `CALLS` | Function invocations | `LoginHandler` → `AuthService.verify` |
+| `IMPLEMENTS` | Interface implementations | `JWTAuth` → `AuthInterface` |
+| `DECIDED_TO` | Decision affects entity | `Decision: Use JWT` → `AuthService` |
+| `FIXES` | Fix resolves bug | `PR #42` → `Bug: Memory Leak` |
+| `USES` | General usage | `UserService` → `DatabasePool` |
+| `MODIFIES` | Implementation changed entity | `Impl: Refactor Auth` → `AuthService` |
+| `INTRODUCES` | Implementation added dependency | `Impl: Add Caching` → `Redis` |
+| `TESTED_BY` | Component test coverage | `AuthService` → `test_auth.py` |
+| `REPLACES` | New code replaces old | `AuthServiceV2` → `AuthServiceV1` |
 
-## Heuristics
+## Extraction Heuristics
 
 - Store plans before implementing features — include acceptance criteria as observations
 - Record implementation outcomes with deviations from the plan
-- Store decisions with rationale ("Chose PostgreSQL over MongoDB because we need ACID transactions")
+- Store decisions with rationale ("Chose PostgreSQL over MongoDB because we need ACID")
 - Track dependency relationships between major modules
-- Record bug root causes as observations on the affected entity — these are high-value for future debugging
+- Record bug root causes as observations — these are high-value for future debugging
 - Don't create entities for every file — focus on architectural boundaries and key components
-- Store configuration decisions (environment setup, deployment strategy) as decision entities
-- When refactoring, link the new implementation to the old one via `REPLACES` relationships
+- Store configuration decisions as decision entities
+- When refactoring, link the new implementation to the old via `REPLACES`
+- Record error messages and stack traces as observations on the relevant bug entity
+- Track which tests cover which components with `TESTED_BY` relationships

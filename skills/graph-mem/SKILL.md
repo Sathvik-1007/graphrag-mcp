@@ -18,169 +18,159 @@ metadata:
   review_interval_days: 30
 ---
 
-# /graph-mem — Knowledge Graph Memory for Agents
+# /graph-mem — Persistent Knowledge Graph Memory
 
-You are an agent with access to persistent, structured knowledge graph memory via
-the `graphmem-mcp` MCP server. This memory survives across sessions. Use it to store
-entities, relationships, and observations — and to recall them when you need context.
+You have access to a persistent, structured knowledge graph via the `graphmem-mcp`
+MCP server. This memory survives across sessions. It runs entirely locally (SQLite +
+embedded embeddings). No API keys required.
 
-The graph runs entirely locally (SQLite + embedded embeddings). No API keys required.
+## The Non-Negotiable Rule
 
-## When This Skill Activates
+**Every turn, you MUST update the knowledge graph.** This is not optional. This is not
+"when you feel like it." After you respond to the user, you extract and store entities,
+observations, and relationships from the conversation. Every. Single. Turn.
 
-Use graph-mem tools whenever you need to:
-- **Remember** facts, decisions, people, systems, or concepts across sessions
-- **Recall** prior context before starting new work
-- **Track** plans, implementations, and their outcomes
-- **Search** for related knowledge using natural language
-- **Navigate** entity relationships and find connections
-- **Maintain** a living knowledge base that grows with each session
+If you catch yourself thinking "I'll do it later" or "this turn isn't important enough"
+— that is the exact moment you must update the graph. The value of persistent memory
+comes from completeness, not selectivity.
+
+## The Double-Pass Pipeline
+
+Every turn follows two passes:
+
+### Pass 1: Respond to the User
+
+Do your normal work — answer questions, write code, debug, explain. Focus entirely on
+the user's request. Do not think about the graph yet.
+
+### Pass 2: Extract and Store
+
+After your response is complete, shift to extraction mode:
+
+1. **Identify entities** — What people, systems, concepts, decisions, plans, problems,
+   tools, or artifacts were discussed this turn? Include entities the user mentioned
+   and entities you referenced.
+
+2. **Search before creating** — For each candidate entity, run `search_nodes` to check
+   if it already exists. If it does, add observations to it. If not, create it.
+
+3. **Formulate observations** — What atomic facts were established this turn? Each
+   observation is one complete sentence capturing one fact. Include dates, numbers,
+   and specific details.
+
+4. **Map relationships** — How do the entities from this turn connect to each other
+   and to existing entities in the graph? Create typed, directional edges.
+
+5. **Socratic self-check** — Before finishing, ask yourself:
+   - "Did I miss any entities mentioned or implied in the conversation?"
+   - "Did I assign the right entity types? Would a different type be more accurate?"
+   - "Are there implicit relationships I didn't capture?"
+   - "Did I store conclusions but forget the reasoning that led to them?"
+   - "Would a future session be able to reconstruct the context from what I stored?"
+
+   If any answer is "no" or "maybe," go back and fix it.
+
+6. **Update stale descriptions** — If an entity's description no longer matches reality
+   based on what was discussed, update it with `update_entity`.
 
 ## The Three Primitives
 
 | Primitive | What It Is | Example |
 |-----------|-----------|---------|
-| **Entity** | A named node with type + description | `Harry Potter` (type: person) |
-| **Observation** | An atomic fact attached to an entity | "Harry received his Hogwarts letter on his 11th birthday" |
-| **Relationship** | A typed directional edge between entities | `Harry Potter` —ATTENDS→ `Hogwarts` |
+| **Entity** | A named node with type + description | `AuthService` (type: system) |
+| **Observation** | An atomic fact attached to an entity | "AuthService was refactored to use JWT on 2026-03-15" |
+| **Relationship** | A typed directional edge between entities | `AuthService` —DEPENDS_ON→ `PostgreSQL` |
 
-## MCP Tools Reference
+## MCP Tools Quick Reference
 
-### Write Tools
-| Tool | Purpose | Key Parameters |
-|------|---------|----------------|
-| `add_entities` | Create entities | name, entity_type, description, observations[] |
-| `add_relationships` | Create edges | source, target, relationship_type, weight |
-| `add_observations` | Attach facts to entity | entity_name, observations[] |
-| `update_entity` | Modify entity fields | name, description, entity_type, properties |
-| `delete_entities` | Remove entities (cascades) | names[] |
-| `merge_entities` | Combine two entities | source → target |
-
-### Read Tools
-| Tool | Purpose | When to Use |
-|------|---------|-------------|
-| `search_nodes` | Hybrid semantic + keyword search | Finding entities by concept |
-| `search_observations` | Search observation text | Finding specific facts |
-| `get_entity` | Full entity with obs + rels | Loading complete context |
-| `find_connections` | Multi-hop graph traversal | Exploring neighborhoods |
-| `find_paths` | Shortest paths between entities | Understanding relationships |
-| `get_subgraph` | Extract neighborhood | Visualizing local graph |
-| `read_graph` | Overview stats | Health checks, orientation |
-| `list_entities` | Browse with pagination | Discovering graph contents |
-
-### Multi-Graph Tools
+### Write (10 tools)
 | Tool | Purpose |
 |------|---------|
-| `list_graphs` | Show all named graphs in .graphmem/ |
-| `switch_graph` | Switch active graph database |
+| `add_entities` | Create entities (name, type, description, observations[]) |
+| `add_relationships` | Create directed edges (source, target, type, weight) |
+| `add_observations` | Attach facts to an existing entity |
+| `update_entity` | Modify description, type, or properties |
+| `update_relationship` | Change weight, type, or properties of an edge |
+| `update_observation` | Edit observation text (re-embeds automatically) |
+| `delete_entities` | Remove entities (cascades to obs + rels) |
+| `delete_relationships` | Remove edges between entities |
+| `delete_observations` | Remove specific observations by ID |
+| `merge_entities` | Combine duplicates (source absorbed into target) |
+
+### Read (8 tools)
+| Tool | When to Use |
+|------|-------------|
+| `search_nodes` | Finding entities by concept (hybrid semantic + keyword) |
+| `search_observations` | Finding specific facts in observation text |
+| `get_entity` | Loading full context for one entity (obs + rels) |
+| `find_connections` | Multi-hop traversal from a starting entity |
+| `find_paths` | Shortest path between two entities |
+| `get_subgraph` | Extract neighborhood around seed entities |
+| `read_graph` | Graph overview (counts, types, most connected) |
+| `list_entities` | Browse all entities with pagination |
+
+### Multi-Graph (4 tools)
+| Tool | Purpose |
+|------|---------|
+| `list_graphs` | Show all graphs in .graphmem/ |
+| `switch_graph` | Change active graph database |
 | `create_graph` | Create a new named graph |
 | `delete_graph` | Remove a named graph |
 
-## Core Workflow: The Ouroboros Pattern
+## Session Lifecycle
 
-The graph documents the work, and the work maintains the graph. Every session follows
-this lifecycle:
+### Session Start — Warm Up
 
-### 1. Recall (Session Start)
-```
-read_graph → understand what's in the graph
-search_nodes("relevant query") → find related entities
-get_entity("EntityName") → load full context
-```
-
-### 2. Plan (Before Work)
-```
-add_entities([{name: "Plan: Task Name", entity_type: "plan", description: "..."}])
-add_observations("Plan: Task Name", ["Step 1: ...", "Step 2: ...", "Goal: ..."])
-add_relationships([{source: "Plan: Task Name", target: "AffectedEntity", type: "TARGETS"}])
-```
-
-### 3. Work + Record (During Work)
-Store decisions, discoveries, and facts **as you go** — not at the end:
-```
-add_entities([{name: "Decision: Use X over Y", entity_type: "decision", ...}])
-add_observations("ExistingEntity", ["New fact discovered during work"])
-add_relationships([{source: "NewThing", target: "ExistingThing", type: "DEPENDS_ON"}])
-```
-
-### 4. Implement (Session End)
-```
-add_entities([{name: "Implementation: Task Name", entity_type: "implementation", ...}])
-add_relationships([{source: "Implementation: Task Name", target: "Plan: Task Name", type: "IMPLEMENTS"}])
-```
-
-### 5. Verify
-```
-read_graph → confirm graph reflects current state
-get_entity("Plan: Task Name") → check all steps tracked
-```
-
-## Verification Checklist
-
-Before ending any session where you used graph-mem, verify:
-
-- [ ] All new entities have descriptions (not empty)
-- [ ] Entity types are lowercase singular nouns (person, concept, system, decision, plan)
-- [ ] Observations are atomic (one fact each, complete sentences)
-- [ ] Relationship types are UPPER_SNAKE_CASE verbs (DEPENDS_ON, IMPLEMENTS, TARGETS)
-- [ ] No duplicate entities created (searched before adding)
-- [ ] Plans have corresponding implementations (or note "in progress")
-- [ ] Stale descriptions updated if facts changed
-
-## Naming Conventions
-
-**Entity names**: Descriptive, natural, searchable
-- Systems: `AuthService`, `DatabasePool` (PascalCase)
-- People: `Alice Johnson`, `Dr. Smith` (natural names)
-- Plans: `Plan: Implement Auth Service`
-- Decisions: `Decision: Use PostgreSQL`
-
-**Entity types**: Lowercase, singular nouns
-- `person`, `concept`, `system`, `decision`, `plan`, `implementation`, `problem`
-
-**Relationship types**: UPPER_SNAKE_CASE verb phrases (source → target direction)
-- `DEPENDS_ON`, `IMPLEMENTS`, `TARGETS`, `PART_OF`, `USES`, `CITES`
-
-**Observations**: Complete sentences, one atomic fact each
-- Good: "The API rate limit was increased from 100 to 500 req/s on 2026-03-15"
-- Bad: "rate limit stuff changed" / "changed AND deployed"
-
-## Anti-Patterns to Avoid
-
-| Anti-Pattern | Why It's Bad | Do This Instead |
-|-------------|-------------|-----------------|
-| Batch writes at session end | You'll forget details | Write as you go |
-| Plans without implementations | Loses outcome context | Always record what happened |
-| Empty descriptions | Unsearchable entities | Write meaningful summaries |
-| Multiple facts per observation | Can't search individually | One fact = one observation |
-| Skip search, create duplicate | Fragments knowledge | Always search_nodes first |
-| Store raw content dumps | Noise overwhelms signal | Store facts *about* content |
-| Never update/delete | Graph becomes stale | Maintain actively |
-
-## Multi-Graph Usage
-
-graph-mem supports multiple named graphs stored as separate `.db` files in
-`~/.graphmem/`. Use this to keep different knowledge domains separate:
+Before doing any work, recall what you know:
 
 ```
-create_graph("project-alpha")    → creates ~/.graphmem/project-alpha.db
-switch_graph("project-alpha")    → switches all tools to use this graph
-list_graphs()                    → shows all graphs with entity/rel/obs counts
-delete_graph("old-project")      → removes the graph file
+read_graph → understand graph state (counts, types)
+search_nodes("task-relevant query") → find related entities
+get_entity("TopResult") → load full context
 ```
 
-The `--graph` CLI flag also selects graphs: `graph-mem server --graph project-alpha`
+This prevents re-discovering things the graph already knows. A cold start is a wasted
+start.
+
+### During Session — Continuous Extraction
+
+The double-pass pipeline runs every turn. Additionally:
+
+- **When you make a decision**: create a decision entity with rationale as observations
+- **When you discover structure**: create entities + relationships immediately
+- **When a fact changes**: `update_entity` to refresh the description
+- **When you find duplicates**: `merge_entities` to consolidate
+- **When something becomes obsolete**: `delete_entities` to prune
+
+### Session End — Sweep
+
+Before ending, do a final sweep:
+
+1. Review what you accomplished — did you store all key outcomes?
+2. `add_observations` for any facts not yet stored
+3. `update_entity` for any descriptions that are now stale
+4. `read_graph` to verify the graph reflects current state
 
 ## Search Strategy
 
-| Looking for... | Use this tool | Example |
-|----------------|--------------|---------|
+| Looking for... | Tool | Example query |
+|----------------|------|---------------|
 | Specific facts | `search_observations` | "What was the API rate limit?" |
 | Entities/concepts | `search_nodes` | "authentication system" |
-| How things connect | `find_connections` | Starting from "AuthService" |
-| Path between two things | `find_paths` | From "Bug: Memory Leak" to "DatabasePool" |
-| Broad overview | `get_subgraph` | Seed: ["AuthService", "UserService"] |
-| Prior work | `search_nodes` | "Plan: feature name" |
+| How things connect | `find_connections` | Start from "AuthService" |
+| Path between two things | `find_paths` | From "Bug: X" to "DatabasePool" |
+| Broad overview | `get_subgraph` | Seeds: ["AuthService", "UserService"] |
+
+## Verification Checklist
+
+Before ending any session, verify:
+
+- [ ] All new entities have non-empty descriptions
+- [ ] Entity types are lowercase singular nouns
+- [ ] Observations are atomic (one fact, complete sentence)
+- [ ] Relationship types are UPPER_SNAKE_CASE verbs
+- [ ] No duplicates created (searched before adding)
+- [ ] Stale descriptions updated
 
 ## MCP Configuration
 
@@ -195,16 +185,14 @@ The `--graph` CLI flag also selects graphs: `graph-mem server --graph project-al
 }
 ```
 
-For a specific graph: `"args": ["server", "--graph", "my-project"]`
-
-For pip-installed: `"command": "graph-mem"` (after `pip install graph-mem`)
-For uvx: `"command": "uvx"`, `"args": ["graph-mem", "server"]`
+For a specific project: `"args": ["server", "--project-dir", "/path/to/project"]`
+For a named graph: `"args": ["server", "--graph", "my-project"]`
 
 ## Reference Files
 
 | File | Contents |
 |------|----------|
-| `best-practices.md` | The ouroboros pattern, memory hygiene, granularity guidelines |
 | `conventions.md` | Naming standards for entities, types, relationships, observations |
-| `workflows.md` | Session start/during/end workflows, search strategy, maintenance |
-| `domains/` | Domain-specific overlays (software engineering, research, etc.) |
+| `workflows.md` | The double-pass pipeline in detail, extraction methodology |
+| `best-practices.md` | Socratic self-check protocol, anti-patterns, memory hygiene |
+| `domains/` | Domain-specific entity types and relationship types |

@@ -1,11 +1,11 @@
-# GRAPH MEM
+# Graph-Mem MCP
 
-> User-driven persistent knowledge graph memory for LLM-powered CLI agents
+> Persistent knowledge graph memory for LLM-powered CLI agents
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org)
 
-**No API keys. No cloud provider. No external services.** GRAPH MEM is a fully local MCP server that plugs into any MCP-compatible agent as a standard tool provider. Install it, add it to your MCP config, and your agent immediately gains user-driven persistent memory -- you decide what to store, when to search, and how to structure your knowledge graph. Nothing else required.
+**No API keys. No cloud provider. No external services.** Graph-Mem MCP is a fully local MCP server that plugs into any MCP-compatible agent as a standard tool provider. Install it, add it to your MCP config, and your agent immediately gains persistent memory -- it decides what to store, when to search, and how to structure the knowledge graph. Nothing else required.
 
 ### Supported Agents
 
@@ -43,7 +43,7 @@
 
 ## What is this?
 
-LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **GRAPH MEM** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. It's user-driven -- you tell your agent what to remember, and the graph builds organically from your interactions. It runs entirely locally -- no API provider accounts, no cloud dependencies, no Docker containers. Just `pip install graph-mem` and go.
+LLM-powered coding agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **Graph-Mem MCP** fixes this by giving any MCP-compatible agent a persistent, per-project knowledge graph that combines graph storage, semantic vector search, and multi-hop traversal. The graph builds organically as the agent works -- extracting entities, decisions, and relationships from every conversation turn. It runs entirely locally -- no API provider accounts, no cloud dependencies, no Docker containers. Just `pip install graph-mem` and go.
 
 ### Why a graph, not just a vector store?
 
@@ -256,7 +256,7 @@ graph TD
 
     Transport --> Tools
 
-    subgraph Tools[GRAPH MEM Server — 23 MCP Tools]
+    subgraph Tools[Graph-Mem MCP Server — 23 MCP Tools]
         Write[Write · 10 tools]
         Read[Read · 8 tools]
         Graph[Multi-Graph · 4 tools]
@@ -294,9 +294,9 @@ For detailed technical documentation -- data model, search pipeline, entity reso
 
 ## MCP Integration
 
-GRAPH MEM is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 23 tools that the agent can call directly.
+Graph-Mem MCP is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 23 tools that the agent can call directly.
 
-**What this means in practice:** once you add GRAPH MEM to your agent's MCP config, the agent sees 23 new tools in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
+**What this means in practice:** once you add Graph-Mem MCP to your agent's MCP config, the agent sees 23 new tools in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` -- it should return the current graph statistics.
 
