@@ -112,6 +112,16 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
   // ── Build simulation graph when data changes ──
   useEffect(() => {
     const engine = engineRef.current;
+
+    // Preserve existing node positions so graph rebuilds don't randomize everything
+    const oldPositions = new Map<string, { x: number; y: number; pinned: boolean }>();
+    for (const n of engine.nodes) {
+      oldPositions.set(n.id, { x: n.x, y: n.y, pinned: n.pinned });
+    }
+
+    // Preserve the focus target across rebuilds — don't let it get nulled
+    const savedFocusTarget = focusTargetRef.current;
+
     engine.clear();
     if (!graph) return;
 
@@ -122,18 +132,19 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
 
     for (const e of visibleEntities) {
       const palette = entityColorPalette(e.entity_type);
+      const old = oldPositions.get(e.name);
       engine.addNode({
         id: e.name,
         label: e.name,
         entityType: e.entity_type,
-        x: (Math.random() - 0.5) * 300,
-        y: (Math.random() - 0.5) * 300,
+        x: old ? old.x : (Math.random() - 0.5) * 300,
+        y: old ? old.y : (Math.random() - 0.5) * 300,
         vx: 0,
         vy: 0,
         ax: 0,
         ay: 0,
         degree: 0,
-        pinned: false,
+        pinned: old ? old.pinned : false,
         color: palette.stroke,
         glowColor: palette.glow,
         fillColor: palette.fill,
@@ -172,6 +183,11 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
       anchor.vy = 0;
       anchor.pinned = true;
       anchorIdRef.current = anchor.id;
+    }
+
+    // Restore focus target if it still exists in the new graph
+    if (savedFocusTarget && nameSet.has(savedFocusTarget)) {
+      focusTargetRef.current = savedFocusTarget;
     }
 
     engine.reheat();

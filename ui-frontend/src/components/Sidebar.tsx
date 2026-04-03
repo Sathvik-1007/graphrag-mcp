@@ -111,7 +111,7 @@ export interface SidebarProps {
   // Manage entity
   selectedEntityName: string | null;
   onDeleteEntity: (name: string) => Promise<void>;
-  onUpdateEntity: (name: string, fields: { description?: string; entity_type?: string }) => Promise<void>;
+  onUpdateEntity: (name: string, fields: { name?: string; description?: string; entity_type?: string }) => Promise<void>;
 }
 
 export default function Sidebar({
@@ -779,9 +779,10 @@ function ManagePanel({
   graphEntities: GraphEntity[];
   selectedEntityName: string | null;
   onDelete: (name: string) => Promise<void>;
-  onUpdate: (name: string, fields: { description?: string; entity_type?: string }) => Promise<void>;
+  onUpdate: (name: string, fields: { name?: string; description?: string; entity_type?: string }) => Promise<void>;
 }) {
   const [chosen, setChosen] = useState(selectedEntityName ?? "");
+  const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editing, setEditing] = useState(false);
@@ -803,6 +804,7 @@ function ManagePanel({
   useEffect(() => {
     const ent = graphEntities.find((e) => e.name === chosen);
     if (ent) {
+      setEditName(ent.name ?? "");
       setEditType(ent.entity_type ?? "");
       setEditDesc(ent.description ?? "");
     }
@@ -832,11 +834,16 @@ function ManagePanel({
     if (!chosen) return;
     setBusy(true);
     try {
-      const fields: { description?: string; entity_type?: string } = {};
+      const fields: { name?: string; description?: string; entity_type?: string } = {};
+      if (editName.trim() && editName.trim() !== chosen) fields.name = editName.trim();
       if (editDesc) fields.description = editDesc;
       if (editType) fields.entity_type = editType;
       await onUpdate(chosen, fields);
-      setFeedback({ ok: true, msg: `Updated "${chosen}"` });
+      // If name changed, update chosen to reflect new name
+      if (fields.name) {
+        setChosen(fields.name);
+      }
+      setFeedback({ ok: true, msg: `Updated "${fields.name || chosen}"` });
       setEditing(false);
     } catch {
       setFeedback({ ok: false, msg: "Update failed" });
@@ -909,6 +916,12 @@ function ManagePanel({
           {/* Edit form */}
           {editing && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <input
+                className="panel-input"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Name"
+              />
               <input
                 className="panel-input"
                 value={editType}

@@ -462,7 +462,9 @@ async def handle_create_observations(request: web.Request) -> web.Response:
 
 
 async def handle_update_entity(request: web.Request) -> web.Response:
-    """Update an existing entity's description, type, or properties."""
+    """Update an existing entity's description, type, name, or properties."""
+    from graph_mem.utils.errors import EntityNotFoundError
+
     graph = request.app.get("graph")
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
@@ -475,6 +477,7 @@ async def handle_update_entity(request: web.Request) -> web.Response:
     except Exception:
         return web.json_response({"error": "Invalid JSON"}, status=400)
 
+    new_name = body.get("name")
     description = body.get("description")
     entity_type = body.get("entity_type")
     properties = body.get("properties")
@@ -482,13 +485,20 @@ async def handle_update_entity(request: web.Request) -> web.Response:
     try:
         updated = await graph.update_entity(
             name,
+            new_name=new_name,
             description=description,
             entity_type=entity_type,
             properties=properties,
         )
+    except EntityNotFoundError as exc:
+        log.warning("Entity not found for update %r: %s", name, exc)
+        return web.json_response({"error": str(exc)}, status=404)
+    except ValueError as exc:
+        log.warning("Invalid update for entity %r: %s", name, exc)
+        return web.json_response({"error": str(exc)}, status=400)
     except Exception as exc:
         log.error("Failed to update entity %r: %s", name, exc)
-        return web.json_response({"error": str(exc)}, status=404)
+        return web.json_response({"error": f"Internal error: {exc}"}, status=500)
 
     return web.json_response(
         {
@@ -506,6 +516,8 @@ async def handle_update_entity(request: web.Request) -> web.Response:
 
 async def handle_delete_entity(request: web.Request) -> web.Response:
     """Delete an entity and its observations/relationships."""
+    from graph_mem.utils.errors import EntityNotFoundError
+
     graph = request.app.get("graph")
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
@@ -515,9 +527,12 @@ async def handle_delete_entity(request: web.Request) -> web.Response:
 
     try:
         deleted = await graph.delete_entities([name])
+    except EntityNotFoundError as exc:
+        log.warning("Entity not found for deletion %r: %s", name, exc)
+        return web.json_response({"error": f"Entity '{name}' not found"}, status=404)
     except Exception as exc:
-        log.error("Failed to delete entity %r: %s", name, exc)
-        return web.json_response({"error": str(exc)}, status=500)
+        log.error("Failed to delete entity %r: %s", name, exc, exc_info=True)
+        return web.json_response({"error": f"Delete failed: {exc}"}, status=500)
 
     if deleted == 0:
         return web.json_response({"error": f"Entity '{name}' not found"}, status=404)

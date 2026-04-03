@@ -66,7 +66,7 @@ graph LR
     subgraph Entities["Entity CRUD"]
         E_C["add_entities<br/>create + auto-merge"]
         E_R["get_entity<br/>list_entities"]
-        E_U["update_entity<br/>description, type, props"]
+        E_U["update_entity<br/>name, description, type, props"]
         E_D["delete_entities<br/>cascade to obs + rels"]
         E_M["merge_entities<br/>consolidate duplicates"]
     end
@@ -414,7 +414,7 @@ The UI backend exposes these endpoints:
 | `GET` | `/api/graph` | Full graph data (entities + relationships) for canvas rendering |
 | `GET` | `/api/entity/:name` | Entity detail with observations and relationships |
 | `POST` | `/api/entity` | Create a new entity |
-| `PUT` | `/api/entity/:name` | Update entity description, type, or properties |
+| `PUT` | `/api/entity/:name` | Update entity name, description, type, or properties |
 | `DELETE` | `/api/entity/:name` | Delete entity (cascades to observations + relationships) |
 | `GET` | `/api/search?q=...` | Hybrid search across all entities |
 | `GET` | `/api/stats` | Graph statistics (counts, distributions, most-connected) |

@@ -202,7 +202,7 @@ graph-mem exposes **23 MCP tools** -- ten for writing, eight for reading, four f
 | `add_entities` | Batch-create entities with optional observations; auto-merges on name conflict |
 | `add_relationships` | Create typed, directed edges between entities; merges duplicates by max weight |
 | `add_observations` | Attach factual statements to entities with optional source provenance |
-| `update_entity` | Modify entity description, properties, or type in-place |
+| `update_entity` | Modify entity name, description, properties, or type in-place (rename with collision check) |
 | `update_relationship` | Change weight, type, or properties of an existing edge without delete+re-create |
 | `update_observation` | Edit observation text content in-place with automatic embedding recompute |
 | `delete_entities` | Remove entities with cascade to relationships, observations, and embeddings |
@@ -448,11 +448,12 @@ The `open_dashboard` MCP tool also starts this UI server and returns the URL dir
 - **Force-directed graph canvas** with real-time physics simulation
 - **Entity type filtering** — toggle visibility of entity types via sidebar checkboxes
 - **Click-to-focus** — click a node on the graph or sidebar to instantly center and zoom to it
-- **Entity CRUD** — create, update, and delete entities, relationships, and observations from the UI
+- **Entity CRUD** — create, update (including rename), and delete entities, relationships, and observations from the UI
 - **Hybrid search** — semantic + keyword search across all entities
 - **Graph picker** — switch between named graphs without restarting the server
 - **Physics controls** — adjust spring, repulsion, damping, and gravity in real-time
 - **Keyboard shortcuts** — Space (reheat), F (fit to view), Escape (deselect)
+- **Robust error handling** — proper HTTP status codes (404 for missing entities, 400 for invalid operations, 201 for creation)
 
 ---
 

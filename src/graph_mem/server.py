@@ -1326,7 +1326,7 @@ async def open_dashboard(
 
         from graph_mem.ui.server import create_app
 
-        app = await create_app(state.storage, state.search)
+        app = await create_app(state.storage, state.search, graph=state.graph)
 
         runner = aio_web.AppRunner(app)
         await runner.setup()

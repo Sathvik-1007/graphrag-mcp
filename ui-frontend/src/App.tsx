@@ -119,10 +119,11 @@ export default function App() {
   );
 
   const handleUpdateEntity = useCallback(
-    async (name: string, fields: { description?: string; entity_type?: string }) => {
+    async (name: string, fields: { name?: string; description?: string; entity_type?: string }) => {
       await updateEntity(name, fields);
-      // Re-fetch entity details and graph
-      await selectEntity(name);
+      // If name was changed, select the new name; otherwise re-select current
+      const newName = fields.name || name;
+      await selectEntity(newName);
       await refreshGraph();
     },
     [selectEntity, refreshGraph],

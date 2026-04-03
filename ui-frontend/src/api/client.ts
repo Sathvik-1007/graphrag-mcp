@@ -118,7 +118,7 @@ export function addObservations(
 
 export function updateEntity(
   name: string,
-  fields: { description?: string; entity_type?: string; properties?: Record<string, unknown> },
+  fields: { name?: string; description?: string; entity_type?: string; properties?: Record<string, unknown> },
 ): Promise<{ name: string; entity_type: string; description: string }> {
   return put(`/entity/${encodeURIComponent(name)}`, fields);
 }

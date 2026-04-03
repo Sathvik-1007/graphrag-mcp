@@ -169,6 +169,7 @@ class GraphEngine:
         self,
         name: str,
         *,
+        new_name: str | None = None,
         description: str | None = None,
         properties: dict[str, object] | None = None,
         entity_type: str | None = None,
@@ -178,6 +179,13 @@ class GraphEngine:
         The entity is resolved by name first. Only non-None arguments
         are applied. Properties are merged (not replaced).
 
+        Args:
+            name: Current entity name (used for resolution).
+            new_name: Optional new name for the entity.
+            description: Optional new description.
+            properties: Optional properties to merge.
+            entity_type: Optional new entity type.
+
         Returns:
             The updated Entity.
         """
@@ -186,6 +194,16 @@ class GraphEngine:
 
         updates: dict[str, Any] = {}
 
+        if new_name is not None:
+            stripped = new_name.strip()
+            if stripped and stripped != entity.name:
+                # Check that no other entity already uses this name
+                existing = await self._storage.get_entity_by_name(stripped)
+                if existing is not None and str(existing["id"]) != entity.id:
+                    raise ValueError(
+                        f"Cannot rename to {stripped!r}: another entity already has that name"
+                    )
+                updates["name"] = stripped
         if description is not None:
             updates["description"] = description
         if properties is not None:

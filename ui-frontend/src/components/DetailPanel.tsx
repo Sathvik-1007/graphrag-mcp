@@ -56,7 +56,7 @@ export interface DetailPanelProps {
   entity: EntityResponse | null;
   onClose: () => void;
   onNavigate: (name: string) => void;
-  onUpdateEntity?: (name: string, fields: { description?: string; entity_type?: string }) => Promise<void>;
+  onUpdateEntity?: (name: string, fields: { name?: string; description?: string; entity_type?: string }) => Promise<void>;
   onDeleteEntity?: (name: string) => Promise<void>;
   allEntityNames?: string[];
 }
@@ -64,6 +64,7 @@ export interface DetailPanelProps {
 export default function DetailPanel({ entity, onClose, onNavigate, onUpdateEntity, onDeleteEntity, allEntityNames }: DetailPanelProps) {
   const open = entity !== null;
   const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editType, setEditType] = useState("");
   const [saving, setSaving] = useState(false);
@@ -71,6 +72,7 @@ export default function DetailPanel({ entity, onClose, onNavigate, onUpdateEntit
 
   const startEdit = useCallback(() => {
     if (!entity) return;
+    setEditName(entity.name || "");
     setEditDesc(entity.description || "");
     setEditType(entity.entity_type || "");
     setEditing(true);
@@ -86,7 +88,8 @@ export default function DetailPanel({ entity, onClose, onNavigate, onUpdateEntit
     if (!entity || !onUpdateEntity) return;
     setSaving(true);
     try {
-      const fields: { description?: string; entity_type?: string } = {};
+      const fields: { name?: string; description?: string; entity_type?: string } = {};
+      if (editName.trim() && editName.trim() !== entity.name) fields.name = editName.trim();
       if (editDesc !== entity.description) fields.description = editDesc;
       if (editType !== entity.entity_type) fields.entity_type = editType;
       if (Object.keys(fields).length > 0) {
@@ -98,7 +101,7 @@ export default function DetailPanel({ entity, onClose, onNavigate, onUpdateEntit
     } finally {
       setSaving(false);
     }
-  }, [entity, editDesc, editType, onUpdateEntity]);
+  }, [entity, editName, editDesc, editType, onUpdateEntity]);
 
   const handleDelete = useCallback(async () => {
     if (!entity || !onDeleteEntity) return;
@@ -191,6 +194,15 @@ export default function DetailPanel({ entity, onClose, onNavigate, onUpdateEntit
           {/* Edit form */}
           {editing && (
             <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--color-border)", background: "var(--color-surface-2)" }}>
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: 3 }}>Name</label>
+                <input
+                  className="sidebar-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  style={{ width: "100%" }}
+                />
+              </div>
               <div style={{ marginBottom: 8 }}>
                 <label style={{ fontSize: 10, fontWeight: 600, color: "var(--color-text-muted)", display: "block", marginBottom: 3 }}>Type</label>
                 <input
