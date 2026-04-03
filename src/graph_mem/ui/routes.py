@@ -135,9 +135,17 @@ async def handle_entity(request: web.Request) -> web.Response:
     name = unquote(raw_name)
 
     # Resolve entity: exact → case-insensitive
-    entity = await storage.get_entity_by_name(name)
-    if entity is None:
-        entity = await storage.get_entity_by_name_nocase(name)
+    try:
+        entity = await storage.get_entity_by_name(name)
+        if entity is None:
+            entity = await storage.get_entity_by_name_nocase(name)
+    except Exception as exc:
+        log.error("Error resolving entity %r: %s", name, exc)
+        return web.json_response(
+            {"error": f"Error resolving entity: {exc}", "name": name},
+            status=500,
+        )
+
     if entity is None:
         return web.json_response(
             {"error": "Entity not found", "name": name},
@@ -146,9 +154,19 @@ async def handle_entity(request: web.Request) -> web.Response:
 
     entity_id = str(entity["id"])
 
-    # Fetch observations and relationships
-    observations = await storage.get_observations_for_entity(entity_id)
-    rel_rows = await storage.get_relationships_for_entity(entity_id)
+    # Fetch observations and relationships — wrap each in try/except
+    # so a failure in one doesn't prevent the other from loading
+    observations: list[dict] = []
+    try:
+        observations = await storage.get_observations_for_entity(entity_id)
+    except Exception as exc:
+        log.warning("Failed to fetch observations for %r: %s", name, exc)
+
+    rel_rows: list[dict] = []
+    try:
+        rel_rows = await storage.get_relationships_for_entity(entity_id)
+    except Exception as exc:
+        log.warning("Failed to fetch relationships for %r: %s", name, exc)
 
     resp_observations = [
         {
@@ -248,13 +266,34 @@ async def handle_stats(request: web.Request) -> web.Response:
     """Return aggregate graph statistics."""
     storage = request.app["storage"]
 
-    entity_count = await storage.count_entities()
-    relationship_count = await storage.count_relationships()
-    observation_count = await storage.count_observations()
-    entity_type_dist = await storage.entity_type_distribution()
-    rel_type_dist = await storage.relationship_type_distribution()
-    most_connected = await storage.most_connected_entities(limit=10)
-    recently_updated = await storage.recent_entities(limit=10)
+    try:
+        entity_count = await storage.count_entities()
+    except Exception:
+        entity_count = 0
+    try:
+        relationship_count = await storage.count_relationships()
+    except Exception:
+        relationship_count = 0
+    try:
+        observation_count = await storage.count_observations()
+    except Exception:
+        observation_count = 0
+    try:
+        entity_type_dist = await storage.entity_type_distribution()
+    except Exception:
+        entity_type_dist = {}
+    try:
+        rel_type_dist = await storage.relationship_type_distribution()
+    except Exception:
+        rel_type_dist = {}
+    try:
+        most_connected = await storage.most_connected_entities(limit=10)
+    except Exception:
+        most_connected = []
+    try:
+        recently_updated = await storage.recent_entities(limit=10)
+    except Exception:
+        recently_updated = []
 
     return web.json_response(
         {
@@ -266,7 +305,7 @@ async def handle_stats(request: web.Request) -> web.Response:
             "most_connected_entities": [
                 {
                     "name": e.get("name", ""),
-                    "connection_count": e.get("connection_count", 0),
+                    "connection_count": e.get("degree", e.get("connection_count", 0)),
                 }
                 for e in most_connected
             ],
@@ -518,9 +557,7 @@ def _quick_db_counts(db_file: Path) -> dict[str, int]:
             ("observations", "observations"),
         ]:
             try:
-                row = conn.execute(
-                    f"SELECT COUNT(*) FROM {table}"
-                ).fetchone()
+                row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
                 counts[key] = row[0] if row else 0
             except sqlite3.OperationalError:
                 pass

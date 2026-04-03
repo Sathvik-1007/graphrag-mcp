@@ -71,12 +71,33 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
     focusNode(name: string) {
       const engine = engineRef.current;
       const node = engine.nodes.find((n) => n.id === name);
-      if (!node) return;
+      if (!node) {
+        // Node might not be in engine yet — schedule a retry
+        let retries = 0;
+        const interval = setInterval(() => {
+          retries++;
+          const n = engineRef.current.nodes.find((nd) => nd.id === name);
+          if (n) {
+            clearInterval(interval);
+            focusTargetRef.current = name;
+            viewRef.current = {
+              x: -n.x,
+              y: -n.y,
+              zoom: Math.max(viewRef.current.zoom, 1.2),
+            };
+            focusLockRef.current = true;
+            setTimeout(() => { focusLockRef.current = false; }, 2000);
+          } else if (retries > 20) {
+            clearInterval(interval);
+          }
+        }, 50);
+        return;
+      }
 
       // Set continuous focus target — the animation loop will track it
       focusTargetRef.current = name;
 
-      // Set initial view position + comfortable zoom
+      // INSTANT snap to the node — no animation delay
       viewRef.current = {
         x: -node.x,
         y: -node.y,
@@ -84,7 +105,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
       };
       // Prevent fitToView from overriding this focus
       focusLockRef.current = true;
-      setTimeout(() => { focusLockRef.current = false; }, 1200);
+      setTimeout(() => { focusLockRef.current = false; }, 2000);
     },
   }), []);
 
@@ -205,10 +226,18 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
         const targetNode = engine.nodes.find((n) => n.id === ft);
         if (targetNode) {
           const view = viewRef.current;
-          // Lerp toward target for smooth following
-          const lerpFactor = 0.15;
-          view.x += (-targetNode.x - view.x) * lerpFactor;
-          view.y += (-targetNode.y - view.y) * lerpFactor;
+          // Fast lerp for responsive tracking (0.3 instead of 0.15)
+          const lerpFactor = 0.3;
+          const dx = -targetNode.x - view.x;
+          const dy = -targetNode.y - view.y;
+          // Snap if very close, otherwise lerp
+          if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) {
+            view.x = -targetNode.x;
+            view.y = -targetNode.y;
+          } else {
+            view.x += dx * lerpFactor;
+            view.y += dy * lerpFactor;
+          }
         } else {
           // Node no longer exists (filtered out?) — stop tracking
           focusTargetRef.current = null;
@@ -244,7 +273,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
 
     function onWheel(e: WheelEvent) {
       e.preventDefault();
-      focusTargetRef.current = null; // User interaction cancels focus tracking
+      // DON'T clear focus on zoom — user may want to zoom into focused node
       const view = viewRef.current;
       const rect = canvas!.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -270,7 +299,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    focusTargetRef.current = null; // User interaction cancels focus tracking
+    // DON'T clear focus here — only clear when user actually drags/pans (in handleMouseMove)
 
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
@@ -319,6 +348,8 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
     const drag = dragRef.current;
 
     if (drag.node) {
+      // Dragging a node — cancel focus tracking since user is interacting
+      focusTargetRef.current = null;
       // Dragging a node — update position in world coords
       const world = s2w(mx, my, view, rect.width, rect.height);
       drag.node.x = world.x;
@@ -328,6 +359,8 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(function Gra
       // Warm alpha to keep simulation alive during drag (from reference)
       engineRef.current.alpha = Math.max(engineRef.current.alpha, 0.25);
     } else if (drag.panning) {
+      // Panning — cancel focus tracking since user is interacting
+      focusTargetRef.current = null;
       // Panning — use panLast (not clickStart) for incremental delta
       const dx = mx - drag.panLastX;
       const dy = my - drag.panLastY;

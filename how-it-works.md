@@ -271,7 +271,7 @@ graph TB
 graph TD
     Root["src/graph_mem/"]
 
-    Entry["server.py<br/>MCP entry point<br/>19 tool definitions<br/>lifespan + embedding helpers"]
+    Entry["server.py<br/>MCP entry point<br/>23 tool definitions<br/>lifespan + embedding helpers"]
     CLI["cli/<br/>main.py -- Click CLI commands<br/>install.py -- 19-agent skill installer"]
     DB["db/<br/>connection.py -- aiosqlite wrapper<br/>schema.py -- migration runner<br/>migrations/ -- versioned SQL"]
     GraphMod["graph/<br/>engine.py -- CRUD + entity resolution<br/>traversal.py -- BFS + pathfinding + subgraph<br/>merge.py -- entity consolidation"]
@@ -297,7 +297,7 @@ graph TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `server.py` | MCP server entry point, registers all 19 tools, lifespan management, embedding orchestration |
+| `server.py` | MCP server entry point, registers all 23 tools, lifespan management, embedding orchestration |
 | `cli/` | Click CLI commands (server, init, status, export, import, validate, ui) + skill installer for 19 agents |
 | `db/` | Database class (aiosqlite, WAL mode, PRAGMA tuning) + versioned migrations |
 | `graph/` | GraphEngine CRUD, BFS traversal, path-finding, subgraph extraction, entity merging |
@@ -306,3 +306,127 @@ graph TD
 | `storage/` | StorageBackend ABC (50+ methods) + SQLiteBackend reference implementation + backend registry |
 | `ui/` | aiohttp web server + REST API routes + pre-built React SPA graph explorer |
 | `utils/` | Config, structured logging, error hierarchy (14 classes), ULID generation |
+
+---
+
+## Multi-Graph Architecture
+
+graph-mem supports multiple named graphs per project. Each graph is a fully independent SQLite database stored in the `.graphmem/` directory:
+
+```
+.graphmem/
+├── graph.db           # default graph
+├── harry-potter.db    # named graph: "harry-potter"
+├── research.db        # named graph: "research"
+└── codebase.db        # named graph: "codebase"
+```
+
+### How switching works
+
+When an agent calls `switch_graph("harry-potter")`, the server:
+
+1. **Resolves the path** -- `<project_dir>/.graphmem/harry-potter.db`
+2. **Closes the current storage backend** -- flushes WAL, releases file handles
+3. **Creates a new SQLiteBackend** pointing at the target database file
+4. **Initializes** -- runs migrations, creates tables if the DB is new
+5. **Hot-swaps engines** -- replaces the `GraphEngine`, `HybridSearch`, and `GraphTraversal` instances with new ones backed by the new storage
+6. **Returns confirmation** -- the agent immediately sees data from the new graph
+
+All 23 MCP tools operate on whichever graph is currently active. No tool call needs a graph parameter -- the active graph is implicit server state.
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Server as MCP Server
+    participant Old as SQLiteBackend (graph.db)
+    participant New as SQLiteBackend (harry-potter.db)
+
+    Agent->>Server: switch_graph("harry-potter")
+    Server->>Old: close()
+    Old-->>Server: flushed + released
+    Server->>New: initialize()
+    New-->>Server: tables ready
+    Server->>Server: replace engine references
+    Server-->>Agent: switched to harry-potter
+    Agent->>Server: search_nodes("Dumbledore")
+    Server->>New: query harry-potter.db
+    New-->>Server: results
+    Server-->>Agent: Dumbledore entity + relationships
+```
+
+### CLI graph targeting
+
+CLI commands accept `--graph <name>` to target a specific graph without switching the server's active graph:
+
+```bash
+graph-mem status --graph harry-potter   # stats for harry-potter.db
+graph-mem export --graph research       # export research.db
+graph-mem ui --graph codebase           # visualise codebase.db
+```
+
+---
+
+## Graph Visualisation UI
+
+The `open_dashboard` tool (and `graph-mem ui` CLI command) launches a web-based graph explorer built with aiohttp + React:
+
+```mermaid
+graph TB
+    subgraph Backend["aiohttp Server"]
+        Routes["REST API routes<br/>GET/POST/PUT/DELETE /api/*"]
+        Static["Static file server<br/>serves React SPA"]
+        CORS["CORS middleware"]
+        Err["Error middleware<br/>catches exceptions → JSON"]
+    end
+
+    subgraph Frontend["React SPA"]
+        Canvas["GraphCanvas<br/>force-directed simulation<br/>d3-force-3d engine"]
+        Sidebar["Sidebar<br/>entity list, type filters,<br/>search, CRUD forms"]
+        GraphPicker["Graph Picker<br/>switch between named graphs"]
+        Detail["Entity Detail Panel<br/>observations, relationships"]
+    end
+
+    subgraph Engine["Shared Engines"]
+        GE2["GraphEngine"]
+        SE2["HybridSearch"]
+        ST2["SQLiteBackend"]
+    end
+
+    Browser["Browser"] --> Static
+    Browser --> Routes
+    Routes --> GE2
+    Routes --> SE2
+    GE2 --> ST2
+    SE2 --> ST2
+    Static --> Frontend
+
+    style Backend fill:#0ea5e9,stroke:#0284c7,color:#fff
+    style Frontend fill:#10b981,stroke:#059669,color:#fff
+    style Engine fill:#8b5cf6,stroke:#7c3aed,color:#fff
+```
+
+### REST API endpoints
+
+The UI backend exposes these endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/graph` | Full graph data (entities + relationships) for canvas rendering |
+| `GET` | `/api/entity/:name` | Entity detail with observations and relationships |
+| `POST` | `/api/entity` | Create a new entity |
+| `PUT` | `/api/entity/:name` | Update entity description, type, or properties |
+| `DELETE` | `/api/entity/:name` | Delete entity (cascades to observations + relationships) |
+| `GET` | `/api/search?q=...` | Hybrid search across all entities |
+| `GET` | `/api/stats` | Graph statistics (counts, distributions, most-connected) |
+| `GET` | `/api/graphs` | List all named graphs with counts |
+| `POST` | `/api/graphs/switch` | Switch active graph |
+
+### Canvas rendering
+
+The graph canvas uses a force-directed simulation powered by `d3-force-3d`:
+
+- **Nodes** are entities, sized by connection count and colored by entity type
+- **Links** are relationships, with labels showing the relationship type
+- **Physics** is configurable: spring strength, repulsion, damping, gravity
+- **Focus** -- clicking a node or sidebar entry smoothly animates the camera to center on it
+- **Keyboard shortcuts** -- Space (reheat simulation), F (fit all nodes in view), Escape (deselect)

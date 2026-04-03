@@ -164,7 +164,25 @@ class SQLiteBackend(StorageBackend):
         await self._require_db().execute(sql, tuple(params))
 
     async def delete_entity(self, entity_id: str) -> None:
+        import contextlib
+
         db = self._require_db()
+        # Clean up embeddings first (vec tables may not exist — ignore errors)
+        # Observation embeddings: need to get obs IDs first
+        with contextlib.suppress(Exception):
+            obs_rows = await db.fetch_all(
+                "SELECT id FROM observations WHERE entity_id = ?", (entity_id,)
+            )
+            for obs_row in obs_rows:
+                with contextlib.suppress(Exception):
+                    await db.execute(
+                        "DELETE FROM observation_embeddings WHERE id = ?",
+                        (str(obs_row["id"]),),
+                    )
+        # Entity embedding
+        with contextlib.suppress(Exception):
+            await db.execute("DELETE FROM entity_embeddings WHERE id = ?", (entity_id,))
+        # Now delete observations, relationships, and entity
         await db.execute("DELETE FROM observations WHERE entity_id = ?", (entity_id,))
         await db.execute(
             "DELETE FROM relationships WHERE source_id = ? OR target_id = ?",

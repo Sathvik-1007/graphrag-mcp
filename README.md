@@ -61,7 +61,7 @@ I want you to give yourself persistent memory using graph-mem. Run the following
 pip install graph-mem
 graph-mem install opencode    # or: claude, cursor, windsurf, codex, gemini, copilot, amp, kiro, roocode, trae, augment, continue, warp, kilocode, qoder, codebuddy, droid, antigravity
 
-This installs a skill file that teaches you how to use the 19 MCP tools.
+This installs a skill file that teaches you how to use all 23 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
@@ -152,7 +152,7 @@ graph-mem install droid         # Droid (Factory)
 graph-mem install antigravity   # Antigravity
 ```
 
-This writes a skill file that teaches your agent how to use all 19 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
+This writes a skill file that teaches your agent how to use all 23 MCP tools -- when to search, when to add entities, naming conventions, and common workflows.
 
 **2. Configure MCP** by adding this to your agent's MCP config:
 
@@ -193,7 +193,7 @@ That's it. Your agent now has persistent memory.
 
 ## Tools
 
-graph-mem exposes **19 MCP tools** -- ten for writing, eight for reading, and one utility. Full CRUD on every primitive: entities, relationships, and observations can all be created, read, updated, and deleted.
+graph-mem exposes **23 MCP tools** -- ten for writing, eight for reading, four for multi-graph management, and one utility. Full CRUD on every primitive: entities, relationships, and observations can all be created, read, updated, and deleted.
 
 ### Write Tools (10)
 
@@ -340,7 +340,7 @@ For detailed technical documentation -- data model, search pipeline, entity reso
 
 ## MCP Integration
 
-graph-mem is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 19 tools that the agent can call directly.
+graph-mem is a standard MCP (Model Context Protocol) server. It does not require any external provider, API key, or cloud account. It communicates with your agent over the MCP protocol (stdio by default, SSE and streamable-http also supported) and exposes 23 tools that the agent can call directly.
 
 **What this means in practice:** once you add graph-mem to your agent's MCP config, the agent sees 19 new tools in its tool list. The agent calls these tools the same way it calls any other MCP tool -- no special SDK, no provider integration, no authentication. It works with every MCP-compatible agent out of the box.
 
@@ -439,9 +439,20 @@ All management commands accept `--db`, `--project-dir`, and `--graph` for target
 graph-mem ui                              # open interactive graph explorer
 graph-mem ui --no-open                    # start server without opening browser
 graph-mem ui --port 9090                  # use a specific port
+graph-mem ui --graph harry-potter         # open a specific named graph
 ```
 
 The `open_dashboard` MCP tool also starts this UI server and returns the URL directly to your agent.
+
+**Dashboard features:**
+- **Force-directed graph canvas** with real-time physics simulation
+- **Entity type filtering** — toggle visibility of entity types via sidebar checkboxes
+- **Click-to-focus** — click a node on the graph or sidebar to instantly center and zoom to it
+- **Entity CRUD** — create, update, and delete entities, relationships, and observations from the UI
+- **Hybrid search** — semantic + keyword search across all entities
+- **Graph picker** — switch between named graphs without restarting the server
+- **Physics controls** — adjust spring, repulsion, damping, and gravity in real-time
+- **Keyboard shortcuts** — Space (reheat), F (fit to view), Escape (deselect)
 
 ---
 
@@ -497,7 +508,7 @@ pip install -e ".[full,dev]"
 ```bash
 pytest                            # all tests (340 pass)
 pytest tests/test_graph/          # graph engine tests
-pytest tests/test_server/         # MCP server tool tests (all 19 tools)
+pytest tests/test_server/         # MCP server tool tests (all 23 tools)
 pytest tests/test_cli/            # CLI command tests
 pytest tests/test_models/         # data model tests
 pytest tests/test_semantic/       # search + vector tests
