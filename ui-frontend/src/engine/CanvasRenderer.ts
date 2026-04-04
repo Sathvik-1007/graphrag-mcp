@@ -269,14 +269,6 @@ function drawNodes(
     ctx.fill();
     ctx.stroke();
 
-    // Pin dot
-    if (nd.pinned) {
-      ctx.fillStyle = "#fdab43";
-      ctx.beginPath();
-      ctx.arc(nd.x + r * 0.65, nd.y - r * 0.65, 2.5 / view.zoom, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     // ── Pulse ring animation for selected node ──
     if (isSelected && selectedAnim > 0) {
       ctx.save();

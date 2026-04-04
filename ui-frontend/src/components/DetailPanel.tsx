@@ -211,13 +211,32 @@ function RelRow({
 }) {
   return (
     <button
-      className="detail-rel-row"
+      className="panel-btn"
+      style={{
+        justifyContent: "flex-start",
+        gap: 6,
+        marginBottom: 3,
+        fontSize: 11,
+      }}
       onClick={() => onNavigate(targetName)}
       title={`Navigate to ${targetName}`}
     >
       {direction === "outgoing" ? <IconArrowRight /> : <IconArrowLeft />}
-      <span className="detail-rel-type">{relType}</span>
-      <span className="detail-rel-target">{targetName}</span>
+      <span
+        style={{
+          color: "var(--color-accent)",
+          fontSize: 9.5,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          flexShrink: 0,
+        }}
+      >
+        {relType}
+      </span>
+      <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {targetName}
+      </span>
     </button>
   );
 }
