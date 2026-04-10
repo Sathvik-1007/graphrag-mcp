@@ -74,6 +74,8 @@ async def create_app(
     if db_path is not None:
         app["db_path"] = db_path
 
+    app["switch_lock"] = asyncio.Lock()
+
     # Resolve frontend dir and stash for route setup
     app["frontend_dir"] = _resolve_frontend_dir()
 

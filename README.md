@@ -437,7 +437,7 @@ All settings are optional. Defaults work out of the box. Every setting can be co
 | `GRAPHMEM_DB_PATH` | `--db` | `.graphmem/graph.db` | Database file path |
 | `GRAPHMEM_BACKEND_TYPE` | -- | `sqlite` | Storage backend |
 | `GRAPHMEM_EMBEDDING_MODEL` | `--embedding-model` | `all-MiniLM-L6-v2` | HuggingFace model ID |
-| `GRAPHMEM_USE_ONNX` | `--use-onnx / --no-onnx` | `true` | Use ONNX runtime if available |
+| `GRAPHMEM_USE_ONNX` | `--use-onnx / --no-onnx` | `false` | Use ONNX runtime if available |
 | `GRAPHMEM_EMBEDDING_DEVICE` | `--embedding-device` | `cpu` | Inference device (`cpu` or `cuda`) |
 | `GRAPHMEM_CACHE_SIZE` | `--cache-size` | `10000` | Embedding cache max entries |
 | `GRAPHMEM_SEARCH_LIMIT` | `--search-limit` | `10` | Default search result limit |

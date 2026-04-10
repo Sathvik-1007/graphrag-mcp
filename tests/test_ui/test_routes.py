@@ -369,3 +369,544 @@ async def test_index_html_served(client_with_frontend):
     assert "text/html" in ct
     body = await resp.text()
     assert "<!DOCTYPE html>" in body or "<html" in body
+
+
+# ---------------------------------------------------------------------------
+# MockGraph — used by write/mutate endpoints
+# ---------------------------------------------------------------------------
+
+
+class _FakeEntity:
+    """Minimal stand-in for Entity returned by graph engine."""
+
+    def __init__(self, name="TestEntity", entity_type="concept", description="desc"):
+        self.id = "fake-id-1"
+        self.name = name
+        self.entity_type = entity_type
+        self.description = description
+
+
+class MockGraph:
+    """Minimal mock of GraphEngine for write-endpoint tests."""
+
+    async def add_entities(self, entities):
+        return [{"id": "new-ent-1", "name": entities[0].name}]
+
+    async def resolve_entity(self, name):
+        if name == "Unknown":
+            from graph_mem.utils.errors import GraphMemError
+
+            raise GraphMemError(f"Entity '{name}' not found")
+        return _FakeEntity(name=name)
+
+    async def add_relationships(self, rels):
+        return [{"id": "new-rel-1"}]
+
+    async def add_observations(self, entity_name, obs_list):
+        return [{"id": f"obs-{i}"} for i in range(len(obs_list))]
+
+    async def update_entity(
+        self, name, *, new_name=None, description=None, entity_type=None, properties=None
+    ):
+        if name == "Ghost":
+            from graph_mem.utils.errors import EntityNotFoundError
+
+            raise EntityNotFoundError(name)
+        return _FakeEntity(
+            name=new_name or name,
+            entity_type=entity_type or "concept",
+            description=description or "updated",
+        )
+
+    async def delete_entities(self, names):
+        if names[0] == "Ghost":
+            return 0
+        return 1
+
+    async def update_observation(self, entity_name, obs_id, content):
+        return {"id": obs_id, "content": content}
+
+    async def delete_observations(self, entity_name, obs_ids):
+        return len(obs_ids)
+
+
+def _make_app_with_graph(*, with_frontend: bool = False) -> web.Application:
+    """Build app wired to mocks including a MockGraph."""
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["graph"] = MockGraph()
+    app["frontend_dir"] = FRONTEND_DIR if (with_frontend and FRONTEND_DIR.is_dir()) else None
+    setup_routes(app)
+    return app
+
+
+@pytest.fixture
+async def gclient(aiohttp_client):
+    """Test client with graph engine (write endpoints)."""
+    app = _make_app_with_graph()
+    return await aiohttp_client(app)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/entity — Create entity
+# ---------------------------------------------------------------------------
+
+
+async def test_create_entity_success(gclient):
+    """POST /api/entity with valid JSON creates entity."""
+    resp = await gclient.post(
+        "/api/entity",
+        json={
+            "name": "NewNode",
+            "entity_type": "concept",
+            "description": "A new concept",
+        },
+    )
+    assert resp.status == 201
+    data = await resp.json()
+    assert data["name"] == "NewNode"
+    assert "id" in data
+
+
+async def test_create_entity_missing_name(gclient):
+    """POST /api/entity without name returns 400."""
+    resp = await gclient.post(
+        "/api/entity",
+        json={
+            "entity_type": "concept",
+        },
+    )
+    assert resp.status == 400
+    data = await resp.json()
+    assert "name" in data["error"].lower()
+
+
+async def test_create_entity_missing_type(gclient):
+    """POST /api/entity without entity_type returns 400."""
+    resp = await gclient.post(
+        "/api/entity",
+        json={
+            "name": "Foo",
+        },
+    )
+    assert resp.status == 400
+    data = await resp.json()
+    assert "entity_type" in data["error"]
+
+
+async def test_create_entity_invalid_json(gclient):
+    """POST /api/entity with bad body returns 400."""
+    resp = await gclient.post(
+        "/api/entity", data=b"not json", headers={"Content-Type": "application/json"}
+    )
+    assert resp.status == 400
+
+
+async def test_create_entity_no_graph(client):
+    """POST /api/entity without graph engine returns 500."""
+    resp = await client.post(
+        "/api/entity",
+        json={
+            "name": "X",
+            "entity_type": "t",
+        },
+    )
+    assert resp.status == 500
+    data = await resp.json()
+    assert "not available" in data["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /api/relationship — Create relationship
+# ---------------------------------------------------------------------------
+
+
+async def test_create_relationship_success(gclient):
+    """POST /api/relationship with valid data returns 201."""
+    resp = await gclient.post(
+        "/api/relationship",
+        json={
+            "source": "AuthService",
+            "target": "TokenStore",
+            "relationship_type": "DEPENDS_ON",
+            "weight": 0.8,
+        },
+    )
+    assert resp.status == 201
+    data = await resp.json()
+    assert "id" in data
+
+
+async def test_create_relationship_missing_fields(gclient):
+    """POST /api/relationship without source/target returns 400."""
+    resp = await gclient.post(
+        "/api/relationship",
+        json={
+            "relationship_type": "CALLS",
+        },
+    )
+    assert resp.status == 400
+
+
+async def test_create_relationship_missing_type(gclient):
+    """POST /api/relationship without relationship_type returns 400."""
+    resp = await gclient.post(
+        "/api/relationship",
+        json={
+            "source": "A",
+            "target": "B",
+        },
+    )
+    assert resp.status == 400
+
+
+async def test_create_relationship_source_not_found(gclient):
+    """POST /api/relationship with unknown source returns 404."""
+    resp = await gclient.post(
+        "/api/relationship",
+        json={
+            "source": "Unknown",
+            "target": "TokenStore",
+            "relationship_type": "CALLS",
+        },
+    )
+    assert resp.status == 404
+
+
+async def test_create_relationship_invalid_json(gclient):
+    """POST /api/relationship with bad body returns 400."""
+    resp = await gclient.post(
+        "/api/relationship", data=b"{bad", headers={"Content-Type": "application/json"}
+    )
+    assert resp.status == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/observations — Add observations
+# ---------------------------------------------------------------------------
+
+
+async def test_create_observations_success(gclient):
+    """POST /api/observations with valid data returns 201."""
+    resp = await gclient.post(
+        "/api/observations",
+        json={
+            "entity_name": "AuthService",
+            "observations": ["Fact one", "Fact two"],
+        },
+    )
+    assert resp.status == 201
+    data = await resp.json()
+    assert data["status"] == "ok"
+    assert data["count"] == 2
+
+
+async def test_create_observations_missing_entity(gclient):
+    """POST /api/observations without entity_name returns 400."""
+    resp = await gclient.post(
+        "/api/observations",
+        json={
+            "observations": ["Something"],
+        },
+    )
+    assert resp.status == 400
+
+
+async def test_create_observations_empty_list(gclient):
+    """POST /api/observations with empty list returns 400."""
+    resp = await gclient.post(
+        "/api/observations",
+        json={
+            "entity_name": "AuthService",
+            "observations": [],
+        },
+    )
+    assert resp.status == 400
+
+
+async def test_create_observations_invalid_json(gclient):
+    """POST /api/observations with bad body returns 400."""
+    resp = await gclient.post(
+        "/api/observations", data=b"nope", headers={"Content-Type": "application/json"}
+    )
+    assert resp.status == 400
+
+
+async def test_create_observations_no_graph(client):
+    """POST /api/observations without graph engine returns 500."""
+    resp = await client.post(
+        "/api/observations",
+        json={
+            "entity_name": "X",
+            "observations": ["y"],
+        },
+    )
+    assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/entity/{name} — Update entity
+# ---------------------------------------------------------------------------
+
+
+async def test_update_entity_success(gclient):
+    """PUT /api/entity/AuthService updates and returns entity."""
+    resp = await gclient.put(
+        "/api/entity/AuthService",
+        json={
+            "description": "Updated auth service",
+            "entity_type": "service",
+        },
+    )
+    assert resp.status == 200
+    data = await resp.json()
+    assert "name" in data
+    assert "entity_type" in data
+
+
+async def test_update_entity_not_found(gclient):
+    """PUT /api/entity/Ghost returns 404."""
+    resp = await gclient.put(
+        "/api/entity/Ghost",
+        json={
+            "description": "nope",
+        },
+    )
+    assert resp.status == 404
+
+
+async def test_update_entity_invalid_json(gclient):
+    """PUT /api/entity/X with bad body returns 400."""
+    resp = await gclient.put(
+        "/api/entity/AuthService", data=b"bad", headers={"Content-Type": "application/json"}
+    )
+    assert resp.status == 400
+
+
+async def test_update_entity_no_graph(client):
+    """PUT /api/entity/X without graph engine returns 500."""
+    resp = await client.put("/api/entity/AuthService", json={"description": "x"})
+    assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/entity/{name} — Delete entity
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_entity_success(gclient):
+    """DELETE /api/entity/AuthService deletes and returns ok."""
+    resp = await gclient.delete("/api/entity/AuthService")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["status"] == "deleted"
+    assert data["count"] == 1
+
+
+async def test_delete_entity_not_found(gclient):
+    """DELETE /api/entity/Ghost returns 404."""
+    resp = await gclient.delete("/api/entity/Ghost")
+    assert resp.status == 404
+
+
+async def test_delete_entity_no_graph(client):
+    """DELETE /api/entity/X without graph engine returns 500."""
+    resp = await client.delete("/api/entity/AuthService")
+    assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/observation/{obs_id} — Update observation
+# ---------------------------------------------------------------------------
+
+
+async def test_update_observation_success(gclient):
+    """PUT /api/observation/{id} updates content."""
+    resp = await gclient.put(
+        "/api/observation/obs-123",
+        json={
+            "entity_name": "AuthService",
+            "content": "Updated fact",
+        },
+    )
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["content"] == "Updated fact"
+
+
+async def test_update_observation_missing_fields(gclient):
+    """PUT /api/observation/{id} without entity_name/content returns 400."""
+    resp = await gclient.put("/api/observation/obs-123", json={})
+    assert resp.status == 400
+
+
+async def test_update_observation_no_graph(client):
+    """PUT /api/observation/{id} without graph returns 500."""
+    resp = await client.put(
+        "/api/observation/obs-123",
+        json={
+            "entity_name": "X",
+            "content": "y",
+        },
+    )
+    assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/observation/{obs_id} — Delete observation
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_observation_success(gclient):
+    """DELETE /api/observation/{id} with query param entity_name."""
+    resp = await gclient.delete("/api/observation/obs-123?entity_name=AuthService")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["status"] == "ok"
+    assert data["deleted"] == 1
+
+
+async def test_delete_observation_missing_entity(gclient):
+    """DELETE /api/observation/{id} without entity_name returns 400."""
+    resp = await gclient.delete("/api/observation/obs-123")
+    assert resp.status == 400
+
+
+async def test_delete_observation_no_graph(client):
+    """DELETE /api/observation/{id} without graph returns 500."""
+    resp = await client.delete("/api/observation/obs-123?entity_name=X")
+    assert resp.status == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /api/graphs — List graphs
+# ---------------------------------------------------------------------------
+
+
+async def test_list_graphs_no_db_path(client):
+    """GET /api/graphs when no db_path returns empty list."""
+    resp = await client.get("/api/graphs")
+    assert resp.status == 200
+    data = await resp.json()
+    assert data["graphs"] == []
+    assert data["active"] is None
+
+
+async def test_list_graphs_with_db_path(aiohttp_client, tmp_path):
+    """GET /api/graphs with valid .graphmem dir lists .db files."""
+    gm_dir = tmp_path / ".graphmem"
+    gm_dir.mkdir()
+    # Create a fake db file with sqlite tables
+    import sqlite3
+
+    db_file = gm_dir / "testgraph.db"
+    conn = sqlite3.connect(str(db_file))
+    conn.execute("CREATE TABLE entities (id TEXT)")
+    conn.execute("CREATE TABLE relationships (id TEXT)")
+    conn.execute("CREATE TABLE observations (id TEXT)")
+    conn.close()
+
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["db_path"] = str(db_file)
+    app["frontend_dir"] = None
+    setup_routes(app)
+
+    c = await aiohttp_client(app)
+    resp = await c.get("/api/graphs")
+    assert resp.status == 200
+    data = await resp.json()
+    assert len(data["graphs"]) == 1
+    assert data["graphs"][0]["name"] == "testgraph"
+    assert data["active"] == "testgraph"
+
+
+# ---------------------------------------------------------------------------
+# POST /api/graphs/switch — Switch graph
+# ---------------------------------------------------------------------------
+
+
+async def test_switch_graph_no_graphmem_dir(client):
+    """POST /api/graphs/switch when no db_path returns 500."""
+    resp = await client.post("/api/graphs/switch", json={"name": "foo"})
+    assert resp.status == 500
+
+
+async def test_switch_graph_missing_name(aiohttp_client, tmp_path):
+    """POST /api/graphs/switch without name returns 400."""
+    gm_dir = tmp_path / ".graphmem"
+    gm_dir.mkdir()
+    db_file = gm_dir / "graph.db"
+    db_file.touch()
+
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["db_path"] = str(db_file)
+    app["frontend_dir"] = None
+    setup_routes(app)
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/graphs/switch", json={"name": ""})
+    assert resp.status == 400
+
+
+async def test_switch_graph_invalid_name(aiohttp_client, tmp_path):
+    """POST /api/graphs/switch with bad chars returns 400."""
+    gm_dir = tmp_path / ".graphmem"
+    gm_dir.mkdir()
+    db_file = gm_dir / "graph.db"
+    db_file.touch()
+
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["db_path"] = str(db_file)
+    app["frontend_dir"] = None
+    setup_routes(app)
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/graphs/switch", json={"name": "../evil"})
+    assert resp.status == 400
+
+
+async def test_switch_graph_not_found(aiohttp_client, tmp_path):
+    """POST /api/graphs/switch with nonexistent graph returns 404."""
+    gm_dir = tmp_path / ".graphmem"
+    gm_dir.mkdir()
+    db_file = gm_dir / "graph.db"
+    db_file.touch()
+
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["db_path"] = str(db_file)
+    app["frontend_dir"] = None
+    setup_routes(app)
+
+    c = await aiohttp_client(app)
+    resp = await c.post("/api/graphs/switch", json={"name": "nonexistent"})
+    assert resp.status == 404
+
+
+async def test_switch_graph_invalid_json(aiohttp_client, tmp_path):
+    """POST /api/graphs/switch with bad JSON returns 400."""
+    gm_dir = tmp_path / ".graphmem"
+    gm_dir.mkdir()
+    db_file = gm_dir / "graph.db"
+    db_file.touch()
+
+    app = web.Application()
+    app["storage"] = MockStorage()
+    app["search"] = MockSearch()
+    app["db_path"] = str(db_file)
+    app["frontend_dir"] = None
+    setup_routes(app)
+
+    c = await aiohttp_client(app)
+    resp = await c.post(
+        "/api/graphs/switch", data=b"nope", headers={"Content-Type": "application/json"}
+    )
+    assert resp.status == 400

@@ -28,6 +28,7 @@ log = get_logger("storage.sqlite")
 
 
 class SQLiteBackend(StorageBackend):
+    _VECTOR_TABLES: frozenset[str] = frozenset({"entity_embeddings", "observation_embeddings"})
     """SQLite + sqlite-vec + FTS5 implementation of :class:`StorageBackend`.
 
     Delegates connection management to :class:`Database` and adds the
@@ -556,6 +557,8 @@ class SQLiteBackend(StorageBackend):
     async def vector_search(
         self, table: str, query_embedding: bytes, limit: int
     ) -> list[tuple[str, float]]:
+        if table not in self._VECTOR_TABLES:
+            raise ValueError(f"Invalid vector table: {table!r}")
         if not self._vec_available:
             return []
         rows = await self._require_db().fetch_all(

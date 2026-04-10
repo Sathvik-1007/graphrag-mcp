@@ -69,9 +69,12 @@ class HybridSearch:
         results = await search.search_entities("detective in Berlin", limit=10)
     """
 
-    def __init__(self, storage: StorageBackend, embeddings: EmbeddingEngine) -> None:
+    def __init__(
+        self, storage: StorageBackend, embeddings: EmbeddingEngine, *, alpha: float = 0.5
+    ) -> None:
         self._storage = storage
         self._embeddings = embeddings
+        self._alpha = alpha
 
     # ── Shared retrieval primitives ──────────────────────────────────
 
@@ -195,7 +198,7 @@ class HybridSearch:
         # Run observation search through the same channels
         obs_vec = await self._vector_search(query, "observation_embeddings", limit)
         obs_fts = await self._fts_observation_search(query, limit)
-        obs_scored = self._rrf_fuse(obs_vec, obs_fts)
+        obs_scored = self._rrf_fuse(obs_vec, obs_fts, alpha=self._alpha)
 
         if not obs_scored:
             return entity_scores
@@ -269,7 +272,7 @@ class HybridSearch:
         """
         vec_results = await self._vector_search(query, "entity_embeddings", limit)
         fts_results = await self._fts_entity_search(query, limit)
-        scored = self._rrf_fuse(vec_results, fts_results)
+        scored = self._rrf_fuse(vec_results, fts_results, alpha=self._alpha)
 
         # ── Observation-boosted entity fusion ────────────────────
         if boost_from_observations and obs_boost_factor > 0.0:
@@ -364,7 +367,7 @@ class HybridSearch:
         """
         vec_results = await self._vector_search(query, "observation_embeddings", limit)
         fts_results = await self._fts_observation_search(query, limit)
-        scored = self._rrf_fuse(vec_results, fts_results)
+        scored = self._rrf_fuse(vec_results, fts_results, alpha=self._alpha)
         if not scored:
             return []
 

@@ -12,12 +12,13 @@ to instantiate the configured backend (SQLite, Neo4j, Memgraph, etc.).
 
 from __future__ import annotations
 
+import asyncio
 import re
 import socket
 import sqlite3
 import threading
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -63,6 +64,7 @@ class AppState:
     # Multi-graph state
     _graphmem_dir: Path | None = None  # Path to .graphmem/ directory
     _active_graph: str = "default"  # Currently active graph name
+    _switch_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 @dataclass
@@ -162,7 +164,7 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
     graph = GraphEngine(storage)
     traversal = GraphTraversal(storage)
     merger = EntityMerger(storage)
-    search = HybridSearch(storage, embeddings)
+    search = HybridSearch(storage, embeddings, alpha=config.rrf_alpha)
 
     _state.config = config
     _state.storage = storage
@@ -699,7 +701,9 @@ async def update_observation(
 
         # Recompute embedding for updated content
         if state.embeddings.available:
-            obs_results = [{"id": observation_id, "content": content}]
+            obs_results: list[ObservationResult] = [
+                {"id": observation_id, "entity_id": "", "content": content},
+            ]
             await _embed_observations(obs_results)
 
         return result
@@ -1032,7 +1036,7 @@ async def _switch_engines(db_path: Path, graph_name: str) -> dict[str, Any]:
     graph = GraphEngine(storage)
     traversal = GraphTraversal(storage)
     merger = EntityMerger(storage)
-    search = HybridSearch(storage, embeddings)
+    search = HybridSearch(storage, embeddings, alpha=state.config.rrf_alpha)
 
     # Update global state
     _state.storage = storage
@@ -1077,15 +1081,21 @@ async def list_graphs() -> dict[str, Any]:
             name = "default" if stem == "graph" else stem
             stat = db_file.stat()
 
-            # Open each DB briefly to get counts
-            try:
-                conn = sqlite3.connect(str(db_file))
-                ent_count = conn.execute("SELECT count(*) FROM entities").fetchone()[0]
-                rel_count = conn.execute("SELECT count(*) FROM relationships").fetchone()[0]
-                obs_count = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
-                conn.close()
-            except (sqlite3.Error, OSError):
-                ent_count = rel_count = obs_count = -1
+            # Open each DB briefly to get counts (off event loop)
+            def _sync_counts(path: str = str(db_file)) -> tuple[int, int, int]:
+                try:
+                    conn = sqlite3.connect(path)
+                    ec = conn.execute("SELECT count(*) FROM entities").fetchone()[0]
+                    rc = conn.execute("SELECT count(*) FROM relationships").fetchone()[0]
+                    oc = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
+                    conn.close()
+                    return ec, rc, oc
+                except (sqlite3.Error, OSError):
+                    return -1, -1, -1
+
+            ent_count, rel_count, obs_count = await asyncio.get_event_loop().run_in_executor(
+                None, _sync_counts
+            )
 
             graphs.append(
                 {
@@ -1201,7 +1211,8 @@ async def switch_graph(
                 "message": (f"Graph '{name}' not found. Use list_graphs to see available graphs."),
             }
 
-        stats = await _switch_engines(db_path, name)
+        async with _state._switch_lock:
+            stats = await _switch_engines(db_path, name)
 
         return {
             **stats,
@@ -1382,27 +1393,11 @@ def create_server(config: Config | None = None) -> FastMCP:
 
 def run(
     transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
-    host: str = "127.0.0.1",
-    port: int = 8080,
 ) -> None:
     """Start the MCP server.
 
     Args:
         transport: ``"stdio"`` (default) for CLI usage,
                    ``"sse"`` or ``"streamable-http"`` for network usage.
-        host: Bind address for network transports (default ``127.0.0.1``).
-        port: Port for network transports.
     """
-    if transport == "stdio":
-        mcp.run(transport="stdio")
-    else:
-        log.warning(
-            "Running with %s transport on %s:%d — no authentication is configured. "
-            "Consider binding to 127.0.0.1 for local-only access.",
-            transport,
-            host,
-            port,
-        )
-        # host/port are not supported by FastMCP.run() in mcp 1.x; pass
-        # only transport for now until the SDK adds network binding options.
-        mcp.run(transport=transport)
+    mcp.run(transport=transport)

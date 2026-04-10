@@ -245,8 +245,6 @@ def server(
 
         run(
             transport=cast("Literal['stdio', 'sse', 'streamable-http']", transport),
-            host=host,
-            port=port,
         )
     except GraphMemError as exc:
         log.debug("Server command failed: %s", exc, exc_info=True)

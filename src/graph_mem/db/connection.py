@@ -94,7 +94,7 @@ class Database:
     async def _load_extensions(self) -> None:
         """Load the sqlite-vec extension for vector search."""
         try:
-            import sqlite_vec  # type: ignore[import-untyped]
+            import sqlite_vec
 
             if self._conn is None:  # pragma: no cover — always true when called from open()
                 return

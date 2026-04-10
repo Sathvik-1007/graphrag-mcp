@@ -159,13 +159,13 @@ async def handle_entity(request: web.Request) -> web.Response:
 
     # Fetch observations and relationships — wrap each in try/except
     # so a failure in one doesn't prevent the other from loading
-    observations: list[dict] = []
+    observations: list[dict[str, Any]] = []
     try:
         observations = await storage.get_observations_for_entity(entity_id)
     except (sqlite3.Error, GraphMemError) as exc:
         log.warning("Failed to fetch observations for %r: %s", name, exc)
 
-    rel_rows: list[dict] = []
+    rel_rows: list[dict[str, Any]] = []
     try:
         rel_rows = await storage.get_relationships_for_entity(entity_id)
     except (sqlite3.Error, GraphMemError) as exc:
@@ -626,29 +626,34 @@ def _get_graphmem_dir(app: web.Application) -> Path | None:
     return None
 
 
-def _quick_db_counts(db_file: Path) -> dict[str, int]:
+async def _quick_db_counts(db_file: Path) -> dict[str, int]:
     """Open a .db file briefly with sqlite3 to get entity/rel/obs counts."""
-    counts: dict[str, int] = {
-        "entities": 0,
-        "relationships": 0,
-        "observations": 0,
-    }
-    try:
-        conn = sqlite3.connect(str(db_file))
-        for table, key in [
-            ("entities", "entities"),
-            ("relationships", "relationships"),
-            ("observations", "observations"),
-        ]:
-            try:
-                row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
-                counts[key] = row[0] if row else 0
-            except sqlite3.OperationalError:
-                pass
-        conn.close()
-    except (sqlite3.Error, OSError):
-        pass
-    return counts
+    import asyncio
+
+    def _sync_counts() -> dict[str, int]:
+        counts: dict[str, int] = {
+            "entities": 0,
+            "relationships": 0,
+            "observations": 0,
+        }
+        try:
+            conn = sqlite3.connect(str(db_file))
+            for table, key in [
+                ("entities", "entities"),
+                ("relationships", "relationships"),
+                ("observations", "observations"),
+            ]:
+                try:
+                    row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                    counts[key] = row[0] if row else 0
+                except sqlite3.OperationalError:
+                    pass
+            conn.close()
+        except (sqlite3.Error, OSError):
+            pass
+        return counts
+
+    return await asyncio.get_event_loop().run_in_executor(None, _sync_counts)
 
 
 async def handle_list_graphs(request: web.Request) -> web.Response:
@@ -667,7 +672,7 @@ async def handle_list_graphs(request: web.Request) -> web.Response:
     graphs = []
     for f in sorted(graphmem_dir.glob("*.db")):
         name = f.stem
-        counts = _quick_db_counts(f)
+        counts = await _quick_db_counts(f)
         graphs.append(
             {
                 "name": name,
@@ -733,45 +738,53 @@ async def handle_switch_graph(request: web.Request) -> web.Response:
         )
 
     # Close old storage
-    old_storage = request.app.get("storage")
-    if old_storage is not None:
+    switch_lock = request.app.get("switch_lock")
+    if switch_lock is None:
+        import asyncio
+
+        switch_lock = asyncio.Lock()
+        request.app["switch_lock"] = switch_lock
+
+    async with switch_lock:
+        old_storage = request.app.get("storage")
+        if old_storage is not None:
+            try:
+                await old_storage.close()
+            except (GraphMemError, OSError) as exc:
+                log.warning("Error closing old storage: %s", exc)
+
+        # Create new storage, graph, search engines
+        from graph_mem.graph.engine import GraphEngine
+        from graph_mem.semantic import EmbeddingEngine, HybridSearch
+        from graph_mem.storage import create_backend
+        from graph_mem.utils import load_config
+
+        config = load_config()
+        new_storage = create_backend(
+            config.backend_type,
+            db_path=str(target_db),
+        )
+        await new_storage.initialize()
+
+        embeddings = EmbeddingEngine(
+            model_name=config.embedding_model,
+            use_onnx=config.use_onnx,
+            device=config.embedding_device,
+            cache_size=config.cache_size,
+        )
         try:
-            await old_storage.close()
-        except (GraphMemError, OSError) as exc:
-            log.warning("Error closing old storage: %s", exc)
+            await embeddings.initialize(new_storage)
+        except (GraphMemError, OSError):
+            log.warning("Embedding engine unavailable after switch")
 
-    # Create new storage, graph, search engines
-    from graph_mem.graph.engine import GraphEngine
-    from graph_mem.semantic import EmbeddingEngine, HybridSearch
-    from graph_mem.storage import create_backend
-    from graph_mem.utils import load_config
+        new_search = HybridSearch(new_storage, embeddings)
+        new_graph = GraphEngine(new_storage)
 
-    config = load_config()
-    new_storage = create_backend(
-        config.backend_type,
-        db_path=str(target_db),
-    )
-    await new_storage.initialize()
-
-    embeddings = EmbeddingEngine(
-        model_name=config.embedding_model,
-        use_onnx=config.use_onnx,
-        device=config.embedding_device,
-        cache_size=config.cache_size,
-    )
-    try:
-        await embeddings.initialize(new_storage)
-    except (GraphMemError, OSError):
-        log.warning("Embedding engine unavailable after switch")
-
-    new_search = HybridSearch(new_storage, embeddings)
-    new_graph = GraphEngine(new_storage)
-
-    # Hot-swap on the app
-    request.app["storage"] = new_storage
-    request.app["search"] = new_search
-    request.app["graph"] = new_graph
-    request.app["db_path"] = str(target_db)
+        # Hot-swap on the app
+        request.app["storage"] = new_storage
+        request.app["search"] = new_search
+        request.app["graph"] = new_graph
+        request.app["db_path"] = str(target_db)
 
     log.info("Switched to graph: %s (%s)", graph_name, target_db)
     return web.json_response(
