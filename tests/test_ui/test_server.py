@@ -6,13 +6,13 @@ Covers _resolve_frontend_dir, create_app, and _error_middleware.
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from aiohttp import web
 
 from graph_mem.ui import server
-
+from graph_mem.ui._keys import db_path_key, graph_key, search_key, storage_key, switch_lock_key
 
 # ---------------------------------------------------------------------------
 # Minimal mocks
@@ -132,8 +132,8 @@ class TestCreateApp:
         storage = StubStorage()
         search = StubSearch()
         app = await server.create_app(storage, search)
-        assert app["storage"] is storage
-        assert app["search"] is search
+        assert app[storage_key] is storage
+        assert app[search_key] is search
 
     async def test_app_has_graph_when_provided(self):
         """App dict contains graph when passed."""
@@ -141,21 +141,21 @@ class TestCreateApp:
         search = StubSearch()
         fake_graph = object()
         app = await server.create_app(storage, search, graph=fake_graph)
-        assert app["graph"] is fake_graph
+        assert app[graph_key] is fake_graph
 
     async def test_app_has_no_graph_key_when_none(self):
         """App dict has no graph key when not passed."""
         storage = StubStorage()
         search = StubSearch()
         app = await server.create_app(storage, search)
-        assert "graph" not in app
+        assert graph_key not in app
 
     async def test_app_has_db_path(self):
         """App stores db_path when provided."""
         storage = StubStorage()
         search = StubSearch()
         app = await server.create_app(storage, search, db_path="/tmp/test.db")
-        assert app["db_path"] == "/tmp/test.db"
+        assert app[db_path_key] == "/tmp/test.db"
 
     async def test_app_has_switch_lock(self):
         """App creates switch_lock for graph switching."""
@@ -164,7 +164,7 @@ class TestCreateApp:
         storage = StubStorage()
         search = StubSearch()
         app = await server.create_app(storage, search)
-        assert isinstance(app["switch_lock"], asyncio.Lock)
+        assert isinstance(app[switch_lock_key], asyncio.Lock)
 
     async def test_app_has_routes(self):
         """App has API routes registered."""

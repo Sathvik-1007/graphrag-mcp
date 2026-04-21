@@ -23,6 +23,14 @@ from graph_mem.semantic import EmbeddingEngine, HybridSearch
 from graph_mem.storage import StorageBackend, create_backend
 from graph_mem.utils import get_logger, load_config, setup_logging
 
+from ._keys import (
+    db_path_key,
+    frontend_dir_key,
+    graph_key,
+    search_key,
+    storage_key,
+    switch_lock_key,
+)
 from .routes import setup_routes
 
 log = get_logger("ui")
@@ -67,17 +75,17 @@ async def create_app(
 ) -> web.Application:
     """Build the aiohttp Application with all routes and middleware."""
     app = web.Application(middlewares=[_error_middleware])
-    app["storage"] = storage
-    app["search"] = search
+    app[storage_key] = storage
+    app[search_key] = search
     if graph is not None:
-        app["graph"] = graph
+        app[graph_key] = graph
     if db_path is not None:
-        app["db_path"] = db_path
+        app[db_path_key] = db_path
 
-    app["switch_lock"] = asyncio.Lock()
+    app[switch_lock_key] = asyncio.Lock()
 
     # Resolve frontend dir and stash for route setup
-    app["frontend_dir"] = _resolve_frontend_dir()
+    app[frontend_dir_key] = _resolve_frontend_dir()
 
     setup_routes(app)
     return app

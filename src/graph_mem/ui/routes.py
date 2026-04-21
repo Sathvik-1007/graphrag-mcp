@@ -29,6 +29,15 @@ from graph_mem.storage import create_backend
 from graph_mem.utils import GraphMemError, get_logger, load_config
 from graph_mem.utils.errors import EntityNotFoundError
 
+from ._keys import (
+    db_path_key,
+    frontend_dir_key,
+    graph_key,
+    search_key,
+    storage_key,
+    switch_lock_key,
+)
+
 log = get_logger("ui.routes")
 
 
@@ -54,7 +63,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/graphs/switch", handle_switch_graph)
 
     # SPA static files — only if the frontend has been built
-    frontend_dir: Path | None = app.get("frontend_dir")
+    frontend_dir: Path | None = app.get(frontend_dir_key)
     if frontend_dir is not None:
         assets_dir = frontend_dir / "assets"
         if assets_dir.is_dir():
@@ -73,7 +82,7 @@ def setup_routes(app: web.Application) -> None:
 
 async def handle_graph(request: web.Request) -> web.Response:
     """Return the complete graph (entities + relationships) for visualisation."""
-    storage = request.app["storage"]
+    storage = request.app[storage_key]
 
     # Parse query parameters
     entity_types_raw = request.query.get("entity_types", "")
@@ -143,7 +152,7 @@ async def handle_graph(request: web.Request) -> web.Response:
 
 async def handle_entity(request: web.Request) -> web.Response:
     """Return full details for a single entity including observations."""
-    storage = request.app["storage"]
+    storage = request.app[storage_key]
     raw_name = request.match_info["name"]
     name = unquote(raw_name)
 
@@ -226,7 +235,7 @@ async def handle_entity(request: web.Request) -> web.Response:
 
 async def handle_search(request: web.Request) -> web.Response:
     """Hybrid search over entities."""
-    search = request.app["search"]
+    search = request.app[search_key]
 
     query = request.query.get("q", "").strip()
     if not query:
@@ -278,7 +287,7 @@ async def handle_search(request: web.Request) -> web.Response:
 
 async def handle_stats(request: web.Request) -> web.Response:
     """Return aggregate graph statistics."""
-    storage = request.app["storage"]
+    storage = request.app[storage_key]
 
     try:
         entity_count = await storage.count_entities()
@@ -341,7 +350,7 @@ async def handle_stats(request: web.Request) -> web.Response:
 
 async def handle_create_entity(request: web.Request) -> web.Response:
     """Create a new entity from the UI."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -378,7 +387,7 @@ async def handle_create_entity(request: web.Request) -> web.Response:
 
 async def handle_create_relationship(request: web.Request) -> web.Response:
     """Create a new relationship between two entities from the UI."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -431,7 +440,7 @@ async def handle_create_relationship(request: web.Request) -> web.Response:
 
 async def handle_create_observations(request: web.Request) -> web.Response:
     """Add observations to an existing entity from the UI."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -471,7 +480,7 @@ async def handle_create_observations(request: web.Request) -> web.Response:
 
 async def handle_update_observation(request: web.Request) -> web.Response:
     """Update an observation's content by ID."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -502,7 +511,7 @@ async def handle_update_observation(request: web.Request) -> web.Response:
 
 async def handle_delete_observation(request: web.Request) -> web.Response:
     """Delete a single observation by ID."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -536,7 +545,7 @@ async def handle_delete_observation(request: web.Request) -> web.Response:
 
 async def handle_update_entity(request: web.Request) -> web.Response:
     """Update an existing entity's description, type, name, or properties."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -587,7 +596,7 @@ async def handle_update_entity(request: web.Request) -> web.Response:
 
 async def handle_delete_entity(request: web.Request) -> web.Response:
     """Delete an entity and its observations/relationships."""
-    graph = request.app.get("graph")
+    graph = request.app.get(graph_key)
     if graph is None:
         return web.json_response({"error": "Graph engine not available"}, status=500)
 
@@ -616,7 +625,7 @@ async def handle_delete_entity(request: web.Request) -> web.Response:
 
 def _get_graphmem_dir(app: web.Application) -> _Path | None:
     """Return the .graphmem directory from app config, or None."""
-    db_path = app.get("db_path")
+    db_path = app.get(db_path_key)
     if db_path:
         p = _Path(str(db_path))
         if p.parent.name == ".graphmem":
@@ -650,7 +659,7 @@ async def _quick_db_counts(db_file: _Path) -> dict[str, int]:
             pass
         return counts
 
-    return await asyncio.get_event_loop().run_in_executor(None, _sync_counts)
+    return await asyncio.get_running_loop().run_in_executor(None, _sync_counts)
 
 
 async def handle_list_graphs(request: web.Request) -> web.Response:
@@ -660,7 +669,7 @@ async def handle_list_graphs(request: web.Request) -> web.Response:
         return web.json_response({"graphs": [], "active": None})
 
     # Determine active graph name from current db_path
-    db_path = request.app.get("db_path", "")
+    db_path = request.app.get(db_path_key, "")
     active_file = _Path(str(db_path)).name if db_path else ""
     active_name = active_file.removesuffix(".db") if active_file else ""
 
@@ -733,13 +742,13 @@ async def handle_switch_graph(request: web.Request) -> web.Response:
         )
 
     # Close old storage
-    switch_lock = request.app.get("switch_lock")
+    switch_lock = request.app.get(switch_lock_key)
     if switch_lock is None:
         switch_lock = asyncio.Lock()
-        request.app["switch_lock"] = switch_lock
+        request.app[switch_lock_key] = switch_lock
 
     async with switch_lock:
-        old_storage = request.app.get("storage")
+        old_storage = request.app.get(storage_key)
         if old_storage is not None:
             try:
                 await old_storage.close()
@@ -769,10 +778,10 @@ async def handle_switch_graph(request: web.Request) -> web.Response:
         new_graph = GraphEngine(new_storage)
 
         # Hot-swap on the app
-        request.app["storage"] = new_storage
-        request.app["search"] = new_search
-        request.app["graph"] = new_graph
-        request.app["db_path"] = str(target_db)
+        request.app[storage_key] = new_storage
+        request.app[search_key] = new_search
+        request.app[graph_key] = new_graph
+        request.app[db_path_key] = str(target_db)
 
     log.info("Switched to graph: %s (%s)", graph_name, target_db)
     return web.json_response(
@@ -791,7 +800,7 @@ async def handle_switch_graph(request: web.Request) -> web.Response:
 
 async def _handle_index(request: web.Request) -> web.StreamResponse:
     """Serve ``index.html`` at the root."""
-    frontend_dir: Path | None = request.app.get("frontend_dir")
+    frontend_dir: Path | None = request.app.get(frontend_dir_key)
     if frontend_dir is None:
         return _no_frontend_response()
     return web.FileResponse(frontend_dir / "index.html")
@@ -799,7 +808,7 @@ async def _handle_index(request: web.Request) -> web.StreamResponse:
 
 async def _handle_spa_fallback(request: web.Request) -> web.StreamResponse:
     """SPA fallback — serve ``index.html`` for all non-API paths."""
-    frontend_dir: Path | None = request.app.get("frontend_dir")
+    frontend_dir: Path | None = request.app.get(frontend_dir_key)
     if frontend_dir is None:
         return _no_frontend_response()
     # Serve actual files if they exist, otherwise fall back to index.html

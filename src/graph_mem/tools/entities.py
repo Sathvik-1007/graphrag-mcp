@@ -95,8 +95,9 @@ async def update_entity(
             entity_type=entity_type,
         )
 
-        # Recompute embedding if description changed
-        if description is not None:
+        # Recompute embedding if description or entity_type changed
+        # (Entity.embedding_text includes name + entity_type + description)
+        if description is not None or entity_type is not None:
             await _embed_entities([updated.id])
 
         return {"result": updated.to_dict(), "status": "updated"}

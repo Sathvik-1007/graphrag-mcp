@@ -103,7 +103,7 @@ async def list_graphs() -> dict[str, Any]:
                 except (sqlite3.Error, OSError):
                     return -1, -1, -1
 
-            ent_count, rel_count, obs_count = await asyncio.get_event_loop().run_in_executor(
+            ent_count, rel_count, obs_count = await asyncio.get_running_loop().run_in_executor(
                 None, _sync_counts
             )
 

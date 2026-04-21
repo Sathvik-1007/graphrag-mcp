@@ -10,6 +10,13 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 
+from graph_mem.ui._keys import (
+    db_path_key,
+    frontend_dir_key,
+    graph_key,
+    search_key,
+    storage_key,
+)
 from graph_mem.ui.routes import setup_routes
 
 # ---------------------------------------------------------------------------
@@ -155,9 +162,9 @@ FRONTEND_DIR = (
 def _make_app(*, with_frontend: bool = False) -> web.Application:
     """Build a minimal aiohttp app wired to mocks."""
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["frontend_dir"] = FRONTEND_DIR if (with_frontend and FRONTEND_DIR.is_dir()) else None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[frontend_dir_key] = FRONTEND_DIR if (with_frontend and FRONTEND_DIR.is_dir()) else None
     setup_routes(app)
     return app
 
@@ -433,10 +440,10 @@ class MockGraph:
 def _make_app_with_graph(*, with_frontend: bool = False) -> web.Application:
     """Build app wired to mocks including a MockGraph."""
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["graph"] = MockGraph()
-    app["frontend_dir"] = FRONTEND_DIR if (with_frontend and FRONTEND_DIR.is_dir()) else None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[graph_key] = MockGraph()
+    app[frontend_dir_key] = FRONTEND_DIR if (with_frontend and FRONTEND_DIR.is_dir()) else None
     setup_routes(app)
     return app
 
@@ -808,10 +815,10 @@ async def test_list_graphs_with_db_path(aiohttp_client, tmp_path):
     conn.close()
 
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["db_path"] = str(db_file)
-    app["frontend_dir"] = None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[db_path_key] = str(db_file)
+    app[frontend_dir_key] = None
     setup_routes(app)
 
     c = await aiohttp_client(app)
@@ -842,10 +849,10 @@ async def test_switch_graph_missing_name(aiohttp_client, tmp_path):
     db_file.touch()
 
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["db_path"] = str(db_file)
-    app["frontend_dir"] = None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[db_path_key] = str(db_file)
+    app[frontend_dir_key] = None
     setup_routes(app)
 
     c = await aiohttp_client(app)
@@ -861,10 +868,10 @@ async def test_switch_graph_invalid_name(aiohttp_client, tmp_path):
     db_file.touch()
 
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["db_path"] = str(db_file)
-    app["frontend_dir"] = None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[db_path_key] = str(db_file)
+    app[frontend_dir_key] = None
     setup_routes(app)
 
     c = await aiohttp_client(app)
@@ -880,10 +887,10 @@ async def test_switch_graph_not_found(aiohttp_client, tmp_path):
     db_file.touch()
 
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["db_path"] = str(db_file)
-    app["frontend_dir"] = None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[db_path_key] = str(db_file)
+    app[frontend_dir_key] = None
     setup_routes(app)
 
     c = await aiohttp_client(app)
@@ -899,10 +906,10 @@ async def test_switch_graph_invalid_json(aiohttp_client, tmp_path):
     db_file.touch()
 
     app = web.Application()
-    app["storage"] = MockStorage()
-    app["search"] = MockSearch()
-    app["db_path"] = str(db_file)
-    app["frontend_dir"] = None
+    app[storage_key] = MockStorage()
+    app[search_key] = MockSearch()
+    app[db_path_key] = str(db_file)
+    app[frontend_dir_key] = None
     setup_routes(app)
 
     c = await aiohttp_client(app)
