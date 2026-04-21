@@ -302,15 +302,9 @@ async def add_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
 
     Each entity needs: name (str), entity_type (str, e.g. 'person', 'concept', 'place').
     Optional: description (str), properties (dict), observations (list[str]).
-
-    Raises:
-        GraphMemError: If entity creation or embedding fails.
-        KeyError/ValueError/TypeError: Returned as error dict if input is malformed.
     """
-    # NOTE: Each tool wraps its body in a try/except that catches GraphMemError
-    # (domain errors) and input validation errors (KeyError, ValueError, TypeError),
-    # returning structured error dicts. This repetition is intentional at the MCP
-    # boundary — a decorator would obscure the error handling from tool documentation.
+    # Error handling is intentional at the MCP boundary — wraps domain errors
+    # and input validation errors into structured error dicts for the client.
     try:
         state = _require_state()
 
@@ -575,9 +569,6 @@ async def delete_relationships(
         source: Source entity name.
         target: Target entity name.
         relationship_type: Optional — restrict deletion to this edge type.
-
-    Returns:
-        Count of relationships deleted.
     """
     try:
         state = _require_state()
@@ -650,9 +641,6 @@ async def delete_observations(
     Args:
         entity_name: Name of the entity the observations belong to.
         observation_ids: List of observation IDs to delete.
-
-    Returns:
-        Count of observations actually deleted.
     """
     try:
         state = _require_state()
@@ -732,9 +720,6 @@ async def search_nodes(
         limit: Maximum results to return (default 10).
         entity_types: Optional filter to specific types (e.g. ['person', 'concept']).
         include_observations: Whether to include entity observations in results.
-
-    Raises:
-        GraphMemError: If the search engine or database encounters an error.
     """
     try:
         state = _require_state()
@@ -769,9 +754,6 @@ async def search_observations(
         query: Natural language search query.
         limit: Maximum results to return (default 10).
         entity_name: Optional — restrict search to observations belonging to this entity.
-
-    Returns:
-        Matching observations with their parent entity names and relevance scores.
     """
     try:
         state = _require_state()
@@ -959,9 +941,6 @@ async def list_entities(
         entity_type: Optional — filter to only this entity type (e.g. 'person').
         limit: Maximum entities to return (default 100, max 500).
         offset: Skip this many entities for pagination (default 0).
-
-    Returns:
-        List of entity summaries with name, type, description, and counts.
     """
     try:
         state = _require_state()
@@ -1136,12 +1115,9 @@ async def _switch_engines(db_path: Path, graph_name: str) -> dict[str, Any]:
 async def list_graphs() -> dict[str, Any]:
     """List all available knowledge graphs with summary statistics.
 
-    Scans the ``.graphmem/`` directory for ``.db`` files. Each file
-    represents a separate knowledge graph. Returns the name, entity count,
-    relationship count, observation count, file size, and last modified time
-    for each graph.
-
-    The currently active graph is marked with ``active: true``.
+    Scans the .graphmem/ directory for .db files. Each file represents a
+    separate knowledge graph. Returns name, entity/relationship/observation
+    counts, file size, and last modified time. The active graph is marked.
     """
     try:
         graphmem_dir = _get_graphmem_dir()
@@ -1201,8 +1177,8 @@ async def create_graph(
 ) -> dict[str, Any]:
     """Create a new empty knowledge graph.
 
-    Creates a new ``.db`` file in the ``.graphmem/`` directory.
-    The graph can then be activated with ``switch_graph``.
+    Creates a new .db file in the .graphmem/ directory.
+    The graph can then be activated with switch_graph.
 
     Args:
         name: Name for the new graph (alphanumeric, hyphens, underscores).
@@ -1261,7 +1237,7 @@ async def switch_graph(
 
     Args:
         name: Name of the graph to switch to. Use 'default' for the
-              default graph (``graph.db``).
+              default graph (graph.db).
     """
     try:
         if name == _state._active_graph:
@@ -1305,8 +1281,8 @@ async def delete_graph(
 ) -> dict[str, Any]:
     """Delete a knowledge graph permanently.
 
-    Removes the ``.db`` file and associated WAL/SHM files from the
-    ``.graphmem/`` directory. Cannot delete the currently active graph
+    Removes the .db file and associated WAL/SHM files from the
+    .graphmem/ directory. Cannot delete the currently active graph
     — switch to a different graph first.
 
     Args:
@@ -1368,17 +1344,16 @@ async def open_dashboard(
     """Launch the interactive graph-visualisation dashboard and return its URL.
 
     Starts a lightweight web server that serves a React-based graph explorer
-    backed by the same knowledge graph the MCP server manages.  If the
+    backed by the same knowledge graph the MCP server manages. If the
     dashboard is already running, the existing URL is returned immediately.
 
-    The dashboard is read-only and runs on ``localhost`` by default.
-    Open the returned URL in any browser to explore the graph visually.
+    The dashboard is read-only and runs on localhost by default.
 
-    Requires the ``[ui]`` optional dependency (``pip install graph-mem[ui]``).
+    Requires the [ui] optional dependency (pip install graph-mem[ui]).
 
     Args:
-        host: Bind address (default ``127.0.0.1`` — local only).
-        port: Port number.  ``0`` (default) auto-selects a free port.
+        host: Bind address (default 127.0.0.1 — local only).
+        port: Port number. 0 (default) auto-selects a free port.
     """
     try:
         # Already running? Return existing URL.
