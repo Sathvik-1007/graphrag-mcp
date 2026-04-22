@@ -1,9 +1,27 @@
 # Workflows
 
-## Extraction — After Every Response
+## Extraction — When New Knowledge Surfaces
 
-Once you've responded to the user, shift into extraction mode. This isn't a
-separate task you bolt on — it's the second half of every turn.
+After responding to the user, ask: **"Did this turn produce new factual
+knowledge?"** If yes, shift into extraction mode. If the turn was purely
+mechanical (formatting, acknowledgments, routine tool output), skip extraction.
+
+### When to extract
+
+- A decision was made or a rationale was discussed
+- A new concept, person, system, or tool was introduced
+- A problem was identified or a root cause discovered
+- A plan was formulated or an outcome recorded
+- An existing fact was corrected or updated
+- Architecture, dependencies, or relationships were discussed
+
+### When to skip extraction
+
+- Purely formatting or stylistic changes
+- Acknowledgments ("ok", "sounds good", "thanks")
+- Routine tool output with no new insights
+- Re-stating what's already in the graph with no new detail
+- Temporary exploration that produced nothing worth keeping
 
 ### What to look for
 
@@ -33,6 +51,17 @@ unreliable.
 - **Similar match**: Decide — is this the same thing? If so, add observations.
   If genuinely different, create it with a more specific name.
 - **No match**: Create it with `add_entities`.
+
+### After creating — find connections
+
+In a large graph, you can't read everything to know what to connect a new
+entity to. Use `suggest_connections` to find semantically related entities:
+
+```
+suggest_connections("NewEntity")  → shows similar entities, marks which are already connected
+```
+
+Then create relationships for the unconnected ones that genuinely relate.
 
 ### Formulate observations
 
@@ -69,14 +98,25 @@ go back and fix it. This self-check catches what casual extraction misses.
 
 ## Starting a Session
 
-Before doing any work, recall what the graph already knows:
+Before doing any work, run a health check and recall context:
 
 ```
-read_graph                          → graph overview (counts, types, recent)
+graph_health                        → counts, hotspots, suggested actions
 search_nodes("task-relevant query") → find related entities
 get_entity("RelevantEntity")        → full context with observations + edges
 find_connections("KeyEntity")       → explore the neighborhood
 ```
+
+### Health check thresholds
+
+After `graph_health`, act on these:
+
+| Condition | Action |
+|-----------|--------|
+| Entity count > 500 | Review and prune stale/low-value entities |
+| Any entity with > 15 observations | Use `compact_observations` to consolidate |
+| Missing descriptions > 10% of entities | Add descriptions with `update_entity` |
+| Average obs/entity > 10 | Prioritize consolidation across hotspots |
 
 A cold start is a wasted start. Prior decisions, context, and lessons learned
 are invisible unless you look for them.
@@ -88,7 +128,7 @@ Before the session ends:
 1. Review what you accomplished — anything not yet stored?
 2. Record outcomes of completed work as observations
 3. Update descriptions that no longer reflect reality
-4. Run `read_graph` to verify the graph matches current state
+4. Run `graph_health` to verify the graph is in good shape
 
 ## Plans and Implementations
 
@@ -114,14 +154,27 @@ When you find two entities representing the same thing:
 3. `merge_entities(source, target)` — source gets absorbed into target
 4. `update_entity` on the merged result if the description needs refinement
 
+## Observation Compaction
+
+When an entity accumulates too many observations (15+), consolidate:
+
+1. `get_entity("Name")` — read all observations
+2. Group related observations by theme
+3. Write merged summaries (preserving dates, numbers, specifics)
+4. `compact_observations("Name", keep_ids=[...], new_observations=[...])`
+
+This is atomic — old observations are deleted and new ones added in one step.
+No data loss between the delete and the add.
+
 ## Periodic Maintenance
 
 Every few sessions, do a health check:
 
-- `read_graph` — review counts and type distributions
+- `graph_health` — review counts, hotspots, missing descriptions
 - Look for stale descriptions, orphaned entities, near-duplicate names
 - `delete_entities` for things no longer relevant
 - `merge_entities` for duplicates that crept in
+- `compact_observations` for entities with 15+ observations
 - Check open plans — do any need their implementations recorded?
 
 The graph is not an append-only log. It's a living knowledge base. Maintain it.

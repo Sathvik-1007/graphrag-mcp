@@ -178,7 +178,7 @@ _FALLBACK_SKILL = """\
 graph-mem gives you persistent, per-project knowledge graph memory through
 the Model Context Protocol (MCP). It stores entities, relationships, and
 observations in a local SQLite database with semantic search powered by local
-embeddings — no API keys needed for the embedding step.
+embeddings — no API keys needed.
 
 Use it to remember project architecture, decisions, people, code patterns, and
 any structured knowledge across sessions.
@@ -186,78 +186,79 @@ any structured knowledge across sessions.
 ## MCP Tools Available
 
 ### Write Tools
-- **add_entities** — Add one or more entities (name, type, observations) to the
-  knowledge graph. Deduplicates by name.
-- **add_relationships** — Create directed relationships between existing entities
+- **add_entities** — Add entities (name, type, description, observations).
+  Deduplicates by name.
+- **add_relationships** — Create directed edges between entities
   (source → relationship_type → target).
 - **add_observations** — Append observations to an existing entity.
-- **update_entity** — Update fields (description, properties, type) on an
-  existing entity.
-- **delete_entities** — Remove one or more entities by name, cascading to their
-  observations and relationships.
-- **merge_entities** — Merge a source entity into a target, moving all
-  observations and relationships.
+- **update_entity** — Update description, properties, or type on an entity.
+- **update_relationship** — Modify an edge's weight, type, or properties.
+- **update_observation** — Edit observation text (re-embeds automatically).
+- **delete_entities** — Remove entities by name, cascading to observations
+  and relationships.
+- **delete_relationships** — Remove edges between entities.
+- **delete_observations** — Remove specific observations by ID.
+- **merge_entities** — Merge source entity into target, moving all data.
 
 ### Read Tools
-- **search_nodes** — Hybrid semantic + full-text search over entities using
-  natural-language queries.  Returns the most relevant entities with their
-  relationships.
-- **find_connections** — Discover entities connected to a given entity via
-  multi-hop graph traversal (BFS).
-- **get_entity** — Retrieve a single entity by exact name, including all its
-  observations and relationships.
-- **read_graph** — Get an overview of the knowledge graph: counts, type
-  distributions, most connected entities, and recent updates.
-- **get_subgraph** — Extract a neighbourhood subgraph around one or more seed
-  entities within a given radius.
-- **find_paths** — Find shortest paths between two entities in the graph.
+- **search_nodes** — Hybrid semantic + full-text search over entities (default 5).
+- **search_observations** — Search observation text content.
+- **find_connections** — Multi-hop BFS traversal from an entity (default 2 hops).
+- **get_entity** — Get entity by name with all observations and relationships.
+- **read_graph** — Graph overview: counts, types, most connected, recent updates.
+- **get_subgraph** — Extract neighbourhood subgraph around seed entities.
+- **find_paths** — Find shortest paths between two entities.
+- **list_entities** — Browse entities with pagination (default 50).
+- **list_relationships** — List relationships with optional entity/type filter.
+
+### Maintenance Tools
+- **graph_health** — Health stats: counts, hotspots, missing descriptions,
+  suggested actions. Run at session start.
+- **compact_observations** — Atomic observation compaction: delete old observations
+  and add merged summaries in one step.
+- **suggest_connections** — Find semantically related entities to connect to.
+  Essential for large graphs where you can't read everything.
+
+### Multi-Graph Tools
+- **list_graphs** — Show all graphs in .graphmem/.
+- **create_graph** — Create a new named graph.
+- **switch_graph** — Change active graph.
+- **delete_graph** — Remove a graph.
+
+### Dashboard
+- **open_dashboard** — Launch interactive graph visualisation in browser.
 
 ## When to Use
 
-1. **Session start** — Search for relevant context before diving into the task.
-   `search_nodes("current project architecture")` gives you a warm start.
-2. **Discovering important concepts** — When you encounter key architectural
-   decisions, domain terms, or people, add them as entities.
-3. **Establishing relationships** — Link entities together to build a navigable
-   graph (e.g., `"AuthService" --uses--> "JWT"`).
-4. **Accumulating knowledge** — Add observations to existing entities as you
-   learn more, rather than creating duplicates.
+1. **Session start** — `graph_health` then `search_nodes("current topic")`.
+2. **New knowledge surfaces** — Extract entities, observations, relationships.
+3. **After adding entities** — `suggest_connections` to find what to link to.
+4. **Periodically** — `graph_health` to check for bloat, run `compact_observations`
+   on entities with 15+ observations.
 
 ## Best Practices
 
-- Use consistent entity names (PascalCase for types, exact names for people).
-- Prefer specific entity types: `Person`, `Service`, `Decision`, `Pattern`,
-  `Library`, `Endpoint`, `Config`, rather than generic `Thing`.
-- Keep observations atomic — one fact per observation.
 - Search before adding to avoid duplicates.
+- One fact per observation, with dates and specifics.
+- Use `suggest_connections` after adding entities in large graphs.
+- Run `graph_health` at session start.
+- Compact observations when entities accumulate >15.
 
 ## MCP Configuration
 
-Add to your MCP config (claude_desktop_config.json, .mcp.json, etc.):
-
 ```json
 {
   "mcpServers": {
     "graph-mem": {
-      "command": "uvx",
-      "args": ["graph-mem", "server"]
+      "command": "graph-mem",
+      "args": ["server"]
     }
   }
 }
 ```
 
-Or with an explicit project directory:
-
-```json
-{
-  "mcpServers": {
-    "graph-mem": {
-      "command": "uvx",
-      "args": ["graph-mem", "server", "--project-dir", "/path/to/project"]
-    }
-  }
-}
-```
+Project-scoped: `"args": ["server", "--project-dir", "/path/to/project"]`
+Named graph: `"args": ["server", "--graph", "my-project"]`
 """
 
 # ---------------------------------------------------------------------------

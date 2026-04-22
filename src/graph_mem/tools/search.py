@@ -14,7 +14,7 @@ from ._core import _error_response, _require_state, mcp
 @mcp.tool()
 async def search_nodes(
     query: str,
-    limit: int = 10,
+    limit: int = 5,
     entity_types: list[str] | None = None,
     include_observations: bool = False,
 ) -> dict[str, Any]:
@@ -26,9 +26,12 @@ async def search_nodes(
 
     Args:
         query: Natural language search query.
-        limit: Maximum results to return (default 10).
+        limit: Maximum results to return (default 5).
         entity_types: Optional filter to specific types (e.g. ['person', 'concept']).
         include_observations: Whether to include entity observations in results.
+
+    Raises:
+        GraphMemError: If the search engine or database encounters an error.
     """
     try:
         state = _require_state()
@@ -88,7 +91,7 @@ async def search_observations(
 @mcp.tool()
 async def find_connections(
     entity_name: str,
-    max_hops: int = 3,
+    max_hops: int = 2,
     relationship_types: list[str] | None = None,
     direction: str = "both",
 ) -> dict[str, Any]:
@@ -99,7 +102,7 @@ async def find_connections(
 
     Args:
         entity_name: Starting entity name.
-        max_hops: How far to traverse (1-10, default 3).
+        max_hops: How far to traverse (1-10, default 2).
         relationship_types: Optional filter on edge types (e.g. ['knows', 'works_at']).
         direction: 'outgoing', 'incoming', or 'both' (default).
     """
@@ -199,11 +202,29 @@ async def read_graph() -> dict[str, Any]:
     type distributions, most connected entities, and recently updated entities.
 
     Takes no arguments. Useful for understanding the current state of the graph.
+
+    Type distributions are capped at top 10, most_connected at top 5,
+    and recent_entities at 5 to keep output compact.
     """
     try:
         state = _require_state()
 
         result: dict[str, Any] = dict(await state.graph.get_stats())
+
+        # Cap distributions to reduce token output
+        if "entity_types" in result and isinstance(result["entity_types"], dict):
+            sorted_et = sorted(result["entity_types"].items(), key=lambda x: x[1], reverse=True)
+            result["entity_types"] = dict(sorted_et[:10])
+        if "relationship_types" in result and isinstance(result["relationship_types"], dict):
+            sorted_rt = sorted(
+                result["relationship_types"].items(), key=lambda x: x[1], reverse=True
+            )
+            result["relationship_types"] = dict(sorted_rt[:10])
+        if "most_connected" in result and isinstance(result["most_connected"], list):
+            result["most_connected"] = result["most_connected"][:5]
+        if "recent_entities" in result and isinstance(result["recent_entities"], list):
+            result["recent_entities"] = result["recent_entities"][:5]
+
         return result
 
     except GraphMemError as exc:

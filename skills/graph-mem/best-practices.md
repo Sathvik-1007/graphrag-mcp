@@ -7,15 +7,27 @@ and why it's wrong:
 
 | Thought | Reality |
 |---------|---------|
-| "This turn isn't important enough" | Every turn has extractable information |
+| "This turn isn't important enough" | If new facts surfaced, they're worth storing |
 | "I'll store it at the end" | You'll forget the details. Store now |
-| "This is just a simple answer" | Simple answers contain facts worth persisting |
+| "This is just a simple answer" | Simple answers can contain facts worth persisting |
 | "The user didn't ask me to remember" | Extraction is automatic, not user-triggered |
 | "I already know this from the graph" | If something was confirmed or changed, record that |
 | "There's nothing new here" | Confirmations, clarifications, and corrections are facts |
 | "I'll remember without storing" | You won't. Next session starts fresh |
 
 If you catch yourself thinking any of these — that is the signal to extract.
+
+## When NOT to Extract
+
+Not every turn needs extraction. Skip when the turn was:
+
+- **Purely mechanical**: formatting, linting, running a command with no insight
+- **Acknowledgments**: "ok", "got it", "sounds good"
+- **Routine output**: test results that match expectations, clean builds
+- **Rehashing**: repeating what's already in the graph with no new detail
+- **Temporary state**: "currently editing file X" (changes every minute)
+
+The question is always: "Did new factual knowledge surface?" If no, skip.
 
 ## What to Extract
 
@@ -34,6 +46,11 @@ If you catch yourself thinking any of these — that is the signal to extract.
 - Transient state that changes every session (e.g., "currently editing file X")
 - Raw content dumps — store facts *about* content, not the content itself
 - Speculative claims without marking uncertainty (use relationship weight < 1.0)
+- Individual lines of code — store architectural facts, not code snippets
+- Every file path touched — store only architecturally significant files
+- Tool invocations and their raw output — store the *insight*, not the log
+- Intermediate debugging steps — store the root cause and fix, not every guess
+- Formatting preferences — these belong in project config, not the knowledge graph
 
 ## Observation Quality
 
@@ -64,14 +81,26 @@ misleads future sessions.
 
 | You want to find... | Use |
 |---------------------|-----|
-| Entities matching a concept | `search_nodes` |
+| Entities matching a concept | `search_nodes` (default 5 results) |
 | A specific fact in observation text | `search_observations` |
 | Everything about one known entity | `get_entity` |
-| What's connected to an entity | `find_connections` |
+| What's connected to an entity | `find_connections` (default 2 hops) |
 | How two entities relate | `find_paths` |
 | The neighborhood around seed entities | `get_subgraph` |
-| Overall graph state | `read_graph` |
-| Browse all entities | `list_entities` |
+| Overall graph health + action items | `graph_health` |
+| Browse all entities | `list_entities` (default 50) |
+| What to connect a new entity to | `suggest_connections` |
+
+## Health Thresholds
+
+Run `graph_health` at session start and act on these:
+
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| Total entities | > 500 | Prune stale, merge duplicates |
+| Observations per entity | > 15 | `compact_observations` to consolidate |
+| Missing descriptions | > 10% | Add descriptions via `update_entity` |
+| Average obs/entity | > 10 | Broad consolidation needed |
 
 ## Granularity
 
@@ -89,7 +118,7 @@ or milestone. Observations carry the details.
 
 | Pattern | Why It Hurts | Do Instead |
 |---------|-------------|------------|
-| Skip extraction ("not important") | Graph becomes empty and useless | Extract every turn |
+| Extract every turn regardless | Graph bloat, noise overwhelms signal | Extract only when new knowledge surfaces |
 | Batch writes at session end | You forget 80% of the details | Write during extraction each turn |
 | Plans without implementations | Loses outcome context | Always record what happened |
 | Empty descriptions | Unsearchable entities | Write meaningful summaries |
@@ -99,6 +128,8 @@ or milestone. Observations carry the details.
 | Never update or delete | Graph goes stale | Maintain actively |
 | Vague observations | Worthless in future sessions | Include dates, numbers, specifics |
 | Generic entity types | Hard to filter and browse | Use the most specific type that fits |
+| Never run graph_health | Problems accumulate silently | Check at session start |
+| 50+ observations per entity | Search quality degrades | compact_observations regularly |
 
 ## Multiple Graphs
 

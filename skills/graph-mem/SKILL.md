@@ -10,9 +10,9 @@ description: >-
 license: MIT
 metadata:
   author: Sathvik
-  version: 2.1.0
+  version: 2.2.0
   created: 2025-03-15
-  last_reviewed: 2026-04-04
+  last_reviewed: 2026-04-22
   review_interval_days: 30
 ---
 
@@ -24,12 +24,13 @@ No API keys required.
 
 ## The Core Contract
 
-**You extract and store knowledge from every conversation turn.** Not when asked.
-Not when it seems important. Every turn. The graph's value comes from completeness.
+**You extract and store knowledge when there is new factual content worth
+persisting.** Not every turn — only turns where new knowledge, decisions,
+discoveries, or corrections surfaced. Skip purely mechanical turns (formatting,
+acknowledgments, tool output with no new facts).
 
-After responding to the user, you shift into extraction mode: identify what was
-discussed, check what already exists, store what's new, connect what's related,
-and verify nothing was missed. Details in `workflows.md`.
+After responding to the user, ask: "Did this turn produce new knowledge?" If yes,
+shift into extraction mode. Details in `workflows.md`.
 
 ## The Three Primitives
 
@@ -63,14 +64,22 @@ Relationships give you structure to traverse. All three matter.
 
 | Tool | When to Reach For It |
 |------|---------------------|
-| `search_nodes` | You have a concept and want to find matching entities |
+| `search_nodes` | You have a concept and want to find matching entities (default: 5 results) |
 | `search_observations` | You need a specific fact buried in observation text |
 | `get_entity` | You know the entity name and want its full context |
-| `find_connections` | You want to explore what's connected to an entity (multi-hop) |
+| `find_connections` | You want to explore what's connected to an entity (default: 2 hops) |
 | `find_paths` | You need to understand how two entities relate |
 | `get_subgraph` | You want the neighborhood around one or more seed entities |
 | `read_graph` | You want a bird's-eye view — counts, types, most connected |
-| `list_entities` | You want to browse entities with pagination |
+| `list_entities` | You want to browse entities with pagination (default: 50) |
+
+### Maintenance and Health
+
+| Tool | When to Reach For It |
+|------|---------------------|
+| `graph_health` | Session start or periodic check — shows hotspots, missing descriptions, action items |
+| `compact_observations` | Entity has too many observations (>15) — merge old ones into fewer, denser summaries |
+| `suggest_connections` | Just added an entity and need to know what to connect it to in a large graph |
 
 ### Multiple Graphs
 
@@ -86,15 +95,26 @@ Relationships give you structure to traverse. All three matter.
 **Starting a session** — warm up before doing work:
 
 ```
-read_graph              → what's in the graph?
-search_nodes("topic")   → what do we already know?
-get_entity("Name")      → load full context for key entities
+graph_health              → counts, hotspots, action items
+search_nodes("topic")     → what do we already know?
+get_entity("Name")        → load full context for key entities
 ```
 
-**During a session** — extract after every response (see `workflows.md`).
+**During a session** — extract when new knowledge surfaces (see `workflows.md`).
 
 **Ending a session** — sweep for anything unstored, update stale descriptions,
-verify with `read_graph`.
+run `graph_health` to verify.
+
+## Adding Entities in Large Graphs
+
+When the graph has many entities, you can't read everything to know what to
+connect a new entity to. Use `suggest_connections` after adding:
+
+```
+add_entities([...])                  → create the entity
+suggest_connections("NewEntity")     → find semantically similar entities
+add_relationships([...])             → connect based on suggestions
+```
 
 ## MCP Configuration
 

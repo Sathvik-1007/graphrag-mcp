@@ -1,6 +1,6 @@
 """Graph Memory MCP tools package.
 
-Importing this package registers all 24 tools on the shared ``mcp``
+Importing this package registers all 27 tools on the shared ``mcp``
 FastMCP instance defined in :mod:`._core`.  Each sub-module groups
 related tools by domain.
 
@@ -13,6 +13,7 @@ from . import (  # noqa: F401  — imported for side effects
     dashboard,
     entities,
     graph_mgmt,
+    maintenance,
     observations,
     relationships,
     search,
@@ -43,6 +44,11 @@ from .graph_mgmt import (
     delete_graph,
     list_graphs,
     switch_graph,
+)
+from .maintenance import (
+    compact_observations,
+    graph_health,
+    suggest_connections,
 )
 from .observations import (
     add_observations,
@@ -75,6 +81,7 @@ __all__ = [
     "add_entities",
     "add_observations",
     "add_relationships",
+    "compact_observations",
     "create_graph",
     "delete_entities",
     "delete_graph",
@@ -84,6 +91,7 @@ __all__ = [
     "find_paths",
     "get_entity",
     "get_subgraph",
+    "graph_health",
     "list_entities",
     "list_graphs",
     "list_relationships",
@@ -93,6 +101,7 @@ __all__ = [
     "read_graph",
     "search_nodes",
     "search_observations",
+    "suggest_connections",
     "switch_graph",
     "update_entity",
     "update_observation",

@@ -1,4 +1,4 @@
-"""FastMCP server — registers all 24 Graph Memory MCP tools.
+"""FastMCP server — registers all 27 Graph Memory MCP tools.
 
 This is the public entry point.  The actual tool implementations live in
 :mod:`graph_mem.tools` sub-modules; importing this module triggers their
@@ -26,6 +26,7 @@ from graph_mem.tools import (  # noqa: F401 — re-exported
     add_entities,
     add_observations,
     add_relationships,
+    compact_observations,
     create_graph,
     delete_entities,
     delete_graph,
@@ -35,6 +36,7 @@ from graph_mem.tools import (  # noqa: F401 — re-exported
     find_paths,
     get_entity,
     get_subgraph,
+    graph_health,
     list_entities,
     list_graphs,
     list_relationships,
@@ -44,6 +46,7 @@ from graph_mem.tools import (  # noqa: F401 — re-exported
     read_graph,
     search_nodes,
     search_observations,
+    suggest_connections,
     switch_graph,
     update_entity,
     update_observation,

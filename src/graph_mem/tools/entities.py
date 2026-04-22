@@ -216,7 +216,7 @@ async def get_entity(name: str) -> dict[str, Any]:
 @mcp.tool()
 async def list_entities(
     entity_type: str | None = None,
-    limit: int = 100,
+    limit: int = 50,
     offset: int = 0,
 ) -> dict[str, Any]:
     """List all entities in the knowledge graph with optional filtering.
@@ -227,8 +227,11 @@ async def list_entities(
 
     Args:
         entity_type: Optional — filter to only this entity type (e.g. 'person').
-        limit: Maximum entities to return (default 100, max 500).
+        limit: Maximum entities to return (default 50, max 500).
         offset: Skip this many entities for pagination (default 0).
+
+    Returns:
+        Matching entities with their summaries and total count.
     """
     try:
         state = _require_state()

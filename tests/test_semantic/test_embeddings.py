@@ -15,11 +15,9 @@ from graph_mem.semantic.embeddings import (
     _embedding_to_bytes,
 )
 from graph_mem.utils.errors import (
-    DimensionMismatchError,
     EmbeddingError,
     ModelLoadError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Mock storage helper
@@ -102,9 +100,11 @@ class TestLoadModelFailures:
     def test_pytorch_import_error_raises_model_load_error(self):
         """When sentence_transformers can't be imported, ModelLoadError raised."""
         engine = EmbeddingEngine(model_name="fake", use_onnx=False)
-        with patch.dict("sys.modules", {"sentence_transformers": None}):
-            with pytest.raises(ModelLoadError, match="sentence-transformers not installed"):
-                engine._load_model()
+        with (
+            patch.dict("sys.modules", {"sentence_transformers": None}),
+            pytest.raises(ModelLoadError, match="sentence-transformers not installed"),
+        ):
+            engine._load_model()
         assert engine._available is False
 
     def test_pytorch_oserror_raises_model_load_error(self):
@@ -113,9 +113,11 @@ class TestLoadModelFailures:
         mock_st = MagicMock()
         mock_st.SentenceTransformer.side_effect = OSError("model not found")
 
-        with patch.dict("sys.modules", {"sentence_transformers": mock_st}):
-            with pytest.raises(ModelLoadError, match="Failed to load embedding model"):
-                engine._load_model()
+        with (
+            patch.dict("sys.modules", {"sentence_transformers": mock_st}),
+            pytest.raises(ModelLoadError, match="Failed to load embedding model"),
+        ):
+            engine._load_model()
 
     def test_pytorch_runtime_error_raises_model_load_error(self):
         """When PyTorch SentenceTransformer raises RuntimeError, ModelLoadError raised."""
@@ -123,9 +125,11 @@ class TestLoadModelFailures:
         mock_st = MagicMock()
         mock_st.SentenceTransformer.side_effect = RuntimeError("CUDA fail")
 
-        with patch.dict("sys.modules", {"sentence_transformers": mock_st}):
-            with pytest.raises(ModelLoadError, match="Failed to load embedding model"):
-                engine._load_model()
+        with (
+            patch.dict("sys.modules", {"sentence_transformers": mock_st}),
+            pytest.raises(ModelLoadError, match="Failed to load embedding model"),
+        ):
+            engine._load_model()
 
 
 # ===========================================================================
