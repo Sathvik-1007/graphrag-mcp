@@ -33,8 +33,8 @@ async def add_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
 
         # Build Entity objects
         entity_objs: list[Entity] = []
-        obs_map: dict[str, list[str]] = {}  # name -> observation texts
-        for raw in entities:
+        obs_by_index: list[tuple[int, list[str]]] = []  # (index, obs_texts)
+        for idx, raw in enumerate(entities):
             name: str = raw["name"]
             entity_type: str = raw["entity_type"]
             description: str = raw.get("description", "")
@@ -50,7 +50,7 @@ async def add_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
             entity_objs.append(entity)
 
             if observations:
-                obs_map[name] = observations
+                obs_by_index.append((idx, observations))
 
         # Persist entities
         results = await state.graph.add_entities(entity_objs)
@@ -59,10 +59,11 @@ async def add_entities(entities: list[dict[str, Any]]) -> dict[str, Any]:
         entity_ids = [str(r["id"]) for r in results]
         await _embed_entities(entity_ids)
 
-        # Add and embed observations for entities that had them
-        for name, obs_texts in obs_map.items():
+        # Add and embed observations — keyed by index to avoid name collision
+        for idx, obs_texts in obs_by_index:
+            entity_name = str(results[idx]["name"])
             obs_objs = [Observation.pending(text) for text in obs_texts]
-            obs_results = await state.graph.add_observations(name, obs_objs)
+            obs_results = await state.graph.add_observations(entity_name, obs_objs)
             await _embed_observations(obs_results)
 
         return {"results": results, "count": len(results)}
@@ -247,7 +248,16 @@ async def list_entities(
         )
 
         results = [e.to_dict() for e in entities]
-        total = await state.storage.count_entities()
+
+        # Total must respect the same entity_type filter for correct pagination
+        if entity_type:
+            count_row = await state.storage.fetch_one(
+                "SELECT COUNT(*) AS cnt FROM entities WHERE entity_type = ?",
+                (entity_type.strip().lower(),),
+            )
+            total = int(count_row["cnt"]) if count_row else 0
+        else:
+            total = await state.storage.count_entities()
 
         return {
             "results": results,

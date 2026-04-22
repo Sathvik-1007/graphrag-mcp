@@ -41,25 +41,17 @@ async def _apply_pragmas(db: aiosqlite.Connection) -> None:
 
 
 class Database:
-    """Async SQLite database handle with connection lifecycle management.
+    """Async SQLite database wrapper with connection lifecycle management.
 
-    Usage::
-
-        db = Database(Path(".graphmem/graph.db"))
-        await db.initialize()      # opens connection, applies PRAGMAs, runs migrations
-        ...
-        await db.close()
-
-    Or as an async context manager::
-
-        async with Database(path) as db:
-            ...
+    Handles PRAGMAs, extension loading, and provides a unified
+    ``execute``/``fetch_*`` interface used by :class:`SQLiteBackend`.
     """
 
     def __init__(self, path: Path) -> None:
         self._path = path.resolve()
         self._conn: aiosqlite.Connection | None = None
         self._vec_loaded = False
+        self._txn_depth = 0  # Tracks nested transaction depth for savepoints
 
     @property
     def vec_loaded(self) -> bool:
@@ -139,19 +131,31 @@ class Database:
 
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[None, None]:
-        """Explicit transaction context manager.
+        """Explicit transaction context manager with savepoint nesting.
 
-        Usage::
-            async with db.transaction():
-                await db.execute("INSERT ...")
-                await db.execute("INSERT ...")
+        Outermost call uses BEGIN/COMMIT/ROLLBACK. Nested calls use
+        SAVEPOINT/RELEASE/ROLLBACK TO so inner failures don't rollback
+        the entire outer transaction.
         """
-        await self.conn.execute("BEGIN")
+        depth = self._txn_depth
+        if depth == 0:
+            await self.conn.execute("BEGIN")
+        else:
+            await self.conn.execute(f"SAVEPOINT sp_{depth}")
+        self._txn_depth += 1
         try:
             yield
-            await self.conn.execute("COMMIT")
+            self._txn_depth -= 1
+            if self._txn_depth == 0:
+                await self.conn.execute("COMMIT")
+            else:
+                await self.conn.execute(f"RELEASE sp_{depth}")
         except Exception:
-            await self.conn.execute("ROLLBACK")
+            self._txn_depth -= 1
+            if self._txn_depth == 0:
+                await self.conn.execute("ROLLBACK")
+            else:
+                await self.conn.execute(f"ROLLBACK TO sp_{depth}")
             raise
 
     async def __aenter__(self) -> Database:

@@ -162,23 +162,24 @@ async def compact_observations(
                 tool_name="compact_observations",
             )
 
-        # Delete observations not in keep list
+        # Wrap delete+add in a transaction so partial failure doesn't lose data
         deleted_count = 0
-        for obs_id in delete_ids:
-            was_deleted = await state.storage.delete_observation(obs_id)
-            if was_deleted:
-                deleted_count += 1
-                # Clean up embedding
-                if state.embeddings.available:
-                    with contextlib.suppress(GraphMemError):
-                        await state.embeddings.delete_observation_embedding(obs_id)
+        added_results: list[dict[str, Any]] = []
+        async with state.storage.transaction():
+            for obs_id in delete_ids:
+                was_deleted = await state.storage.delete_observation(obs_id)
+                if was_deleted:
+                    deleted_count += 1
+                    # Clean up embedding
+                    if state.embeddings.available:
+                        with contextlib.suppress(GraphMemError):
+                            await state.embeddings.delete_observation_embedding(obs_id)
 
-        # Add new observations
-        added_results = []
-        if new_observations:
-            obs_objs = [Observation.pending(text) for text in new_observations]
-            added_results = await state.graph.add_observations(entity_name, obs_objs)
-            await _embed_observations(added_results)
+            # Add new observations
+            if new_observations:
+                obs_objs = [Observation.pending(text) for text in new_observations]
+                added_results = await state.graph.add_observations(entity_name, obs_objs)
+                await _embed_observations(added_results)
 
         # Final count
         remaining = len(keep_ids) + len(added_results)
@@ -225,6 +226,7 @@ async def suggest_connections(
             query.strip(),
             limit=limit + 1,  # +1 because self might appear
             include_observations=False,
+            boost_from_observations=False,  # structural similarity only
         )
 
         # Get existing relationships for this entity

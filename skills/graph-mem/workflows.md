@@ -151,7 +151,7 @@ When you find two entities representing the same thing:
 
 1. `get_entity` on both — compare observations and relationships
 2. Confirm they genuinely represent the same real-world concept
-3. `merge_entities(source, target)` — source gets absorbed into target
+3. `merge_entities(target, source)` — source gets absorbed into target
 4. `update_entity` on the merged result if the description needs refinement
 
 ## Observation Compaction

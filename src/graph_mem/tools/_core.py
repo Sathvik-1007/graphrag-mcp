@@ -201,7 +201,10 @@ mcp = FastMCP("graph-mem", lifespan=_lifespan)
 def _error_response(exc: Exception, *, tool_name: str = "") -> dict[str, Any]:
     """Build a structured MCP error response dict and log the failure."""
     label = f"{tool_name}: " if tool_name else ""
-    log.debug("%sfailed: %s: %s", label, type(exc).__name__, exc)
+    if isinstance(exc, EntityNotFoundError):
+        log.debug("%snot found: %s", label, exc)
+    else:
+        log.warning("%sfailed: %s: %s", label, type(exc).__name__, exc)
     resp: dict[str, Any] = {
         "error": True,
         "error_type": type(exc).__name__,

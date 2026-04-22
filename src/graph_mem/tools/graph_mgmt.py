@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from graph_mem.graph import EntityMerger, GraphEngine, GraphTraversal
-from graph_mem.semantic import EmbeddingEngine, HybridSearch
+from graph_mem.semantic import HybridSearch
 from graph_mem.storage import create_backend
 from graph_mem.utils import GraphMemError, get_logger
 
@@ -30,6 +30,9 @@ async def _switch_engines(db_path: Path, graph_name: str) -> dict[str, Any]:
     """Close current storage and reinitialise all engines for a new DB."""
     state = _require_state()
 
+    # Preserve the loaded embedding model — it's stateless and expensive to reload
+    old_embeddings = state.embeddings
+
     # Close current storage
     await state.storage.close()
 
@@ -37,26 +40,21 @@ async def _switch_engines(db_path: Path, graph_name: str) -> dict[str, Any]:
     storage = create_backend(state.config.backend_type, db_path=db_path)
     await storage.initialize()
 
-    # Reinitialise engines with new storage
-    embeddings = EmbeddingEngine(
-        model_name=state.config.embedding_model,
-        use_onnx=state.config.use_onnx,
-        device=state.config.embedding_device,
-        cache_size=state.config.cache_size,
-    )
-    await embeddings.initialize(storage)
+    # Reuse existing embedding engine — just swap its storage backend
+    old_embeddings.set_storage(storage)
+    await old_embeddings.initialize(storage)
 
     graph = GraphEngine(storage)
     traversal = GraphTraversal(storage)
     merger = EntityMerger(storage)
-    search = HybridSearch(storage, embeddings, alpha=state.config.rrf_alpha)
+    search = HybridSearch(storage, old_embeddings, alpha=state.config.rrf_alpha)
 
     # Update global state
     _state.storage = storage
     _state.graph = graph
     _state.traversal = traversal
     _state.merger = merger
-    _state.embeddings = embeddings
+    _state.embeddings = old_embeddings
     _state.search = search
     _state._active_graph = graph_name
 
@@ -93,15 +91,18 @@ async def list_graphs() -> dict[str, Any]:
 
             # Open each DB briefly to get counts (off event loop)
             def _sync_counts(path: str = str(db_file)) -> tuple[int, int, int]:
+                conn: sqlite3.Connection | None = None
                 try:
                     conn = sqlite3.connect(path)
                     ec = conn.execute("SELECT count(*) FROM entities").fetchone()[0]
                     rc = conn.execute("SELECT count(*) FROM relationships").fetchone()[0]
                     oc = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
-                    conn.close()
                     return ec, rc, oc
                 except (sqlite3.Error, OSError):
                     return -1, -1, -1
+                finally:
+                    if conn:
+                        conn.close()
 
             ent_count, rel_count, obs_count = await asyncio.get_running_loop().run_in_executor(
                 None, _sync_counts

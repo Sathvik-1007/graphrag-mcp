@@ -234,6 +234,12 @@ class HybridSearch:
             for eid in all_ids
         ]
         merged.sort(key=lambda x: x[1], reverse=True)
+
+        # Re-normalize to [0, 1] after boosting
+        max_score = merged[0][1] if merged else 0.0
+        if max_score > 1.0:
+            merged = [(eid, s / max_score) for eid, s in merged]
+
         return merged
 
     # ── Public search methods ────────────────────────────────────────

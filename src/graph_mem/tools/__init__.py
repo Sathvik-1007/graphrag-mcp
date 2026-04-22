@@ -21,11 +21,11 @@ from . import (  # noqa: F401  — imported for side effects
 from ._core import (
     AppState,
     InitializedState,
-    _embed_entities,
-    _embed_observations,
-    _error_response,
-    _require_state,
-    _state,
+    _embed_entities,  # noqa: F401 — re-exported for server.py backwards compat
+    _embed_observations,  # noqa: F401
+    _error_response,  # noqa: F401
+    _require_state,  # noqa: F401
+    _state,  # noqa: F401
     mcp,
 )
 from .dashboard import open_dashboard
@@ -73,11 +73,6 @@ from .search import (
 __all__ = [
     "AppState",
     "InitializedState",
-    "_embed_entities",
-    "_embed_observations",
-    "_error_response",
-    "_require_state",
-    "_state",
     "add_entities",
     "add_observations",
     "add_relationships",

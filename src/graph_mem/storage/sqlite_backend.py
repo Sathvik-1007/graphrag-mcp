@@ -29,13 +29,14 @@ log = get_logger("storage.sqlite")
 
 
 class SQLiteBackend(StorageBackend):
-    _VECTOR_TABLES: frozenset[str] = frozenset({"entity_embeddings", "observation_embeddings"})
     """SQLite + sqlite-vec + FTS5 implementation of :class:`StorageBackend`.
 
     Delegates connection management to :class:`Database` and adds the
     higher-level CRUD queries that ``GraphEngine``, ``HybridSearch``,
     and ``EntityMerger`` need.
     """
+
+    _VECTOR_TABLES: frozenset[str] = frozenset({"entity_embeddings", "observation_embeddings"})
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
@@ -576,22 +577,12 @@ class SQLiteBackend(StorageBackend):
 
     # ── Full-text search ─────────────────────────────────────────────────
 
-    # FTS5 reserved words that must not appear as bare tokens in queries.
-    _FTS5_RESERVED = frozenset({"AND", "OR", "NOT", "NEAR"})
-
     def _sanitize_fts5_query(self, query: str) -> str:
         """Sanitize a user query for safe use in FTS5 MATCH expressions.
 
         Strategy: tokenize the query into individual words, quote each
-        token to neutralise FTS5 operators, and join with OR so that
-        *any* matching term contributes to ranking.  This replaces the
-        previous phrase-only approach that required every token to appear
-        consecutively — causing most multi-word queries to return zero
-        results.
-
-        Additionally, a phrase-boost term is appended so that documents
-        matching the exact phrase rank higher than those matching only
-        individual tokens.
+        token to neutralise FTS5 operators (AND, OR, NOT, NEAR), and
+        join with OR so that *any* matching term contributes to ranking.
 
         Args:
             query: Raw user query string.

@@ -36,6 +36,12 @@ async def search_nodes(
     try:
         state = _require_state()
 
+        # Normalize entity_types to match stored lowercase values
+        if entity_types is not None:
+            entity_types = [t.strip().lower() for t in entity_types if t.strip()]
+            if not entity_types:
+                entity_types = None
+
         results = await state.search.search_entities(
             query,
             limit=limit,

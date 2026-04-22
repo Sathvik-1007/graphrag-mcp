@@ -61,7 +61,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def create_server(config: Config | None = None) -> mcp.__class__:
+def create_server(config: Config | None = None) -> type(mcp):
     """Create and return the FastMCP server instance.
 
     Optionally accepts a pre-built :class:`Config` for testing or

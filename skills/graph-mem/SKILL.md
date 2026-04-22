@@ -81,6 +81,18 @@ Relationships give you structure to traverse. All three matter.
 | `compact_observations` | Entity has too many observations (>15) — merge old ones into fewer, denser summaries |
 | `suggest_connections` | Just added an entity and need to know what to connect it to in a large graph |
 
+### Relationships
+
+| Tool | When to Reach For It |
+|------|---------------------|
+| `list_relationships` | Browse relationships with filtering — by entity, type, or both (paginated) |
+
+### Visualization
+
+| Tool | Purpose |
+|------|---------|
+| `open_dashboard` | Launch interactive graph explorer in browser (read-only, localhost) |
+
 ### Multiple Graphs
 
 | Tool | Purpose |

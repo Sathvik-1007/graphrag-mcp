@@ -535,7 +535,7 @@ class GraphEngine:
         if new_weight is not None:
             updates["weight"] = new_weight
         if new_type is not None:
-            updates["relationship_type"] = new_type
+            updates["relationship_type"] = new_type.strip().lower()
         if properties is not None:
             old_props = json.loads(str(existing.get("properties", "{}")))
             merged = {**old_props, **properties}
