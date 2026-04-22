@@ -36,6 +36,7 @@ async def open_dashboard(
         if _state._ui_url is not None:
             return {
                 "url": _state._ui_url,
+                "port": _state._ui_port,
                 "status": "already_running",
                 "message": f"Dashboard is already running at {_state._ui_url}",
             }
@@ -62,25 +63,30 @@ async def open_dashboard(
         runner = aio_web.AppRunner(app)
         await runner.setup()
 
-        # Auto-select a free port if port == 0
-        resolved_port = port
-        if resolved_port == 0:
+        # Auto-select a free port if port == 0, using SockSite to avoid TOCTOU race
+        if port == 0:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((host, 0))
             resolved_port = sock.getsockname()[1]
-            sock.close()
+            sock.listen(128)
+            site = aio_web.SockSite(runner, sock)
+        else:
+            resolved_port = port
+            site = aio_web.TCPSite(runner, host, resolved_port)
 
-        site = aio_web.TCPSite(runner, host, resolved_port)
         await site.start()
 
         url = f"http://{host}:{resolved_port}"
         _state._ui_url = url
         _state._ui_runner = runner
+        _state._ui_port = resolved_port
 
         log.info("Dashboard started at %s", url)
 
         return {
             "url": url,
+            "port": resolved_port,
             "status": "started",
             "message": f"Dashboard is now running at {url}",
         }

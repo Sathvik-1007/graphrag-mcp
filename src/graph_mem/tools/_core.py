@@ -52,6 +52,7 @@ class AppState:
     # UI dashboard state (managed by open_dashboard tool)
     _ui_url: str | None = None
     _ui_runner: Any | None = None
+    _ui_port: int | None = None
     # Multi-graph state
     _graphmem_dir: Path | None = None  # Path to .graphmem/ directory
     _active_graph: str = "default"  # Currently active graph name
@@ -177,6 +178,7 @@ async def _lifespan(server: FastMCP) -> AsyncIterator[None]:
             log.debug("UI runner cleanup error (ignored)", exc_info=True)
         _state._ui_runner = None
         _state._ui_url = None
+        _state._ui_port = None
     await storage.close()
     _state.storage = None
     _state.graph = None
