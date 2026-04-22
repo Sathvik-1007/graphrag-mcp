@@ -43,7 +43,7 @@ Graph-Mem MCP is a universal MCP server that gives any agent or IDE persistent, 
 
 ## What is this?
 
-AI agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **Graph-Mem MCP** solves this by providing persistent, per-project knowledge graphs that any MCP-compatible agent can read and write to. The graph builds organically as the agent works — extracting entities, decisions, and relationships from every conversation. It runs as a standard MCP server with 23 tools that plug into any agent, IDE, or framework that supports the Model Context Protocol.
+AI agents forget everything between sessions. They re-read files, re-discover architecture, and repeat mistakes. **Graph-Mem MCP** solves this by providing persistent, per-project knowledge graphs that any MCP-compatible agent can read and write to. The graph builds organically as the agent works — extracting entities, decisions, and relationships from every conversation. It runs as a standard MCP server with 28 tools that plug into any agent, IDE, or framework that supports the Model Context Protocol.
 
 ### Why a graph, not just a vector store?
 
@@ -91,7 +91,7 @@ graph-mem install droid         # Droid (Factory)
 graph-mem install antigravity   # Antigravity
 ```
 
-This writes a skill file that teaches your agent how to use all 23 MCP tools — when to search, when to add entities, naming conventions, and common workflows.
+This writes a skill file that teaches your agent how to use all 28 MCP tools — when to search, when to add entities, naming conventions, and common workflows.
 
 **3. Configure MCP** by adding this to your agent's MCP config:
 
@@ -140,7 +140,7 @@ I want you to give yourself persistent memory using graph-mem. Run the following
 pip install graph-mem
 graph-mem install opencode    # or: claude, cursor, windsurf, codex, gemini, copilot, amp, kiro, roocode, trae, augment, continue, warp, kilocode, qoder, codebuddy, droid, antigravity
 
-This installs a skill file that teaches you how to use all 23 MCP tools.
+This installs a skill file that teaches you how to use all 28 MCP tools.
 The server should already be configured in your MCP config. If not, add it:
 
 {
@@ -207,7 +207,7 @@ pip install "graph-mem[full]"         # all of the above
 
 ## Tools
 
-Graph-Mem exposes **23 MCP tools** — ten for writing, eight for reading, four for multi-graph management, and one utility. Full CRUD on every primitive: entities, relationships, and observations can all be created, read, updated, and deleted.
+Graph-Mem exposes **28 MCP tools** — ten for writing, nine for reading, four for maintenance, four for multi-graph management, and one utility. Full CRUD on every primitive: entities, relationships, and observations can all be created, read, updated, and deleted.
 
 ### Write Tools (10)
 
@@ -224,7 +224,7 @@ Graph-Mem exposes **23 MCP tools** — ten for writing, eight for reading, four 
 | `delete_observations` | Remove specific observations by ID with ownership validation |
 | `merge_entities` | Combine duplicate entities: moves observations and relationships, deduplicates edges |
 
-### Read Tools (8)
+### Read Tools (9)
 
 | Tool | Description |
 |------|-------------|
@@ -233,11 +233,21 @@ Graph-Mem exposes **23 MCP tools** — ten for writing, eight for reading, four 
 | `find_connections` | Multi-hop BFS graph traversal with direction and type filters |
 | `get_entity` | Full entity details with all observations and relationships |
 | `list_entities` | Browse/paginate all entities with optional type filter |
+| `list_relationships` | Browse/paginate relationships with entity, type, or combined filters |
 | `read_graph` | Graph statistics: counts, type distributions, most-connected entities |
 | `get_subgraph` | Extract neighborhood subgraph around seed entities |
 | `find_paths` | Find shortest paths between two entities via BFS |
 
-### Utility Tools (1)
+### Maintenance Tools (4)
+
+| Tool | Description |
+|------|-------------|
+| `graph_health` | Health stats: counts, hotspots, missing descriptions, suggested actions |
+| `compact_observations` | Atomic observation compaction — delete old and add merged summaries in one step |
+| `suggest_connections` | Find semantically similar entities for a node to connect to |
+| `audit_graph` | Full quality screening — disconnected nodes, missing data, weak links (plain text report) |
+
+### Visualization (1)
 
 | Tool | Description |
 |------|-------------|
@@ -270,15 +280,17 @@ graph TD
 
     Transport --> Tools
 
-    subgraph Tools[Graph-Mem MCP Server — 23 MCP Tools]
+    subgraph Tools[Graph-Mem MCP Server — 28 MCP Tools]
         Write[Write · 10 tools]
-        Read[Read · 8 tools]
+        Read[Read · 9 tools]
+        Maint[Maintenance · 4 tools]
         Graph[Multi-Graph · 4 tools]
         UI[Dashboard · 1 tool]
     end
 
     Write --> Engines
     Read --> Engines
+    Maint --> Engines
 
     subgraph Engines
         GE[GraphEngine]
@@ -308,7 +320,7 @@ For detailed technical documentation — data model, search pipeline, entity res
 
 ## MCP Integration
 
-Graph-Mem MCP is a standard MCP server. It communicates with your agent over the Model Context Protocol (stdio by default, SSE and streamable-http also supported) and exposes 23 tools that the agent calls directly — the same way it calls any other MCP tool. It works with every MCP-compatible agent, IDE, and framework out of the box.
+Graph-Mem MCP is a standard MCP server. It communicates with your agent over the Model Context Protocol (stdio by default, SSE and streamable-http also supported) and exposes 28 tools that the agent calls directly — the same way it calls any other MCP tool. It works with every MCP-compatible agent, IDE, and framework out of the box.
 
 To verify it's working, ask your agent to run `read_graph()` — it should return the current graph statistics.
 
@@ -478,9 +490,9 @@ pip install -e ".[full,dev]"
 ### Running Tests
 
 ```bash
-pytest                            # all tests (346 pass)
+pytest                            # all tests
 pytest tests/test_graph/          # graph engine tests
-pytest tests/test_server/         # MCP server tool tests (all 23 tools)
+pytest tests/test_server/         # MCP server tool tests (all 28 tools)
 pytest tests/test_cli/            # CLI command tests
 pytest tests/test_models/         # data model tests
 pytest tests/test_semantic/       # search + vector tests

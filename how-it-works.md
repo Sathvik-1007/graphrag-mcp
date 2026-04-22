@@ -271,7 +271,7 @@ graph TB
 graph TD
     Root["src/graph_mem/"]
 
-    Entry["server.py<br/>MCP entry point<br/>23 tool definitions<br/>lifespan + embedding helpers"]
+    Entry["server.py + tools/<br/>MCP entry point<br/>28 tool definitions<br/>lifespan + embedding helpers"]
     CLI["cli/<br/>main.py -- Click CLI commands<br/>install.py -- 19-agent skill installer"]
     DB["db/<br/>connection.py -- aiosqlite wrapper<br/>schema.py -- migration runner<br/>migrations/ -- versioned SQL"]
     GraphMod["graph/<br/>engine.py -- CRUD + entity resolution<br/>traversal.py -- BFS + pathfinding + subgraph<br/>merge.py -- entity consolidation"]
@@ -297,7 +297,7 @@ graph TD
 
 | Module | Responsibility |
 |--------|---------------|
-| `server.py` | MCP server entry point, registers all 23 tools, lifespan management, embedding orchestration |
+| `server.py` + `tools/` | MCP server entry point, registers all 28 tools, lifespan management, embedding orchestration |
 | `cli/` | Click CLI commands (server, init, status, export, import, validate, ui) + skill installer for 19 agents |
 | `db/` | Database class (aiosqlite, WAL mode, PRAGMA tuning) + versioned migrations |
 | `graph/` | GraphEngine CRUD, BFS traversal, path-finding, subgraph extraction, entity merging |
@@ -332,7 +332,7 @@ When an agent calls `switch_graph("harry-potter")`, the server:
 5. **Hot-swaps engines** -- replaces the `GraphEngine`, `HybridSearch`, and `GraphTraversal` instances with new ones backed by the new storage
 6. **Returns confirmation** -- the agent immediately sees data from the new graph
 
-All 23 MCP tools operate on whichever graph is currently active. No tool call needs a graph parameter -- the active graph is implicit server state.
+All 28 MCP tools operate on whichever graph is currently active. No tool call needs a graph parameter -- the active graph is implicit server state.
 
 ```mermaid
 sequenceDiagram

@@ -24,6 +24,7 @@ from graph_mem.server import (
     add_entities,
     add_observations,
     add_relationships,
+    compact_observations,
     delete_entities,
     delete_observations,
     delete_relationships,
@@ -32,6 +33,7 @@ from graph_mem.server import (
     get_entity,
     get_subgraph,
     list_entities,
+    list_relationships,
     merge_entities,
     read_graph,
     search_nodes,
@@ -752,3 +754,256 @@ async def test_list_entities_empty(setup_server):
     result = await list_entities()
     assert result["count"] == 0
     assert result["results"] == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# list_relationships
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_list_relationships_empty(setup_server):
+    """list_relationships returns empty when no relationships exist."""
+    result = await list_relationships()
+    _assert_no_error(result)
+    assert result["count"] == 0
+    assert result["total"] == 0
+    assert result["results"] == []
+
+
+async def test_list_relationships_global(setup_server):
+    """list_relationships without filters returns all relationships."""
+    await _add_entity("Alice", "person")
+    await _add_entity("Bob", "person")
+    await _add_entity("ACME", "organization")
+    await add_relationships(
+        relationships=[
+            {"source": "Alice", "target": "Bob", "relationship_type": "knows"},
+            {"source": "Alice", "target": "ACME", "relationship_type": "works_at"},
+        ]
+    )
+
+    result = await list_relationships()
+    _assert_no_error(result)
+    assert result["total"] == 2
+    assert result["count"] == 2
+    assert len(result["results"]) == 2
+
+    # Verify enriched fields
+    rel = result["results"][0]
+    assert "source_name" in rel
+    assert "target_name" in rel
+    assert "relationship_type" in rel
+
+
+async def test_list_relationships_by_entity(setup_server):
+    """list_relationships scoped to a specific entity."""
+    await _add_entity("Alice", "person")
+    await _add_entity("Bob", "person")
+    await _add_entity("Carol", "person")
+    await add_relationships(
+        relationships=[
+            {"source": "Alice", "target": "Bob", "relationship_type": "knows"},
+            {"source": "Bob", "target": "Carol", "relationship_type": "knows"},
+        ]
+    )
+
+    # Alice has 1 relationship
+    result = await list_relationships(entity_name="Alice")
+    _assert_no_error(result)
+    assert result["total"] == 1
+
+    # Bob has 2 (one as source, one as target)
+    result = await list_relationships(entity_name="Bob")
+    _assert_no_error(result)
+    assert result["total"] == 2
+
+
+async def test_list_relationships_by_type(setup_server):
+    """list_relationships filtered by relationship_type."""
+    await _add_entity("Alice", "person")
+    await _add_entity("Bob", "person")
+    await _add_entity("ACME", "organization")
+    await add_relationships(
+        relationships=[
+            {"source": "Alice", "target": "Bob", "relationship_type": "knows"},
+            {"source": "Alice", "target": "ACME", "relationship_type": "works_at"},
+        ]
+    )
+
+    result = await list_relationships(relationship_type="knows")
+    _assert_no_error(result)
+    assert result["total"] == 1
+    assert result["results"][0]["relationship_type"] == "knows"
+
+    result = await list_relationships(relationship_type="works_at")
+    _assert_no_error(result)
+    assert result["total"] == 1
+
+
+async def test_list_relationships_pagination(setup_server):
+    """list_relationships respects limit and offset."""
+    await _add_entity("A", "node")
+    await _add_entity("B", "node")
+    await _add_entity("C", "node")
+    await _add_entity("D", "node")
+    await add_relationships(
+        relationships=[
+            {"source": "A", "target": "B", "relationship_type": "links"},
+            {"source": "A", "target": "C", "relationship_type": "links"},
+            {"source": "A", "target": "D", "relationship_type": "links"},
+        ]
+    )
+
+    # First page
+    result = await list_relationships(limit=2, offset=0)
+    _assert_no_error(result)
+    assert result["count"] == 2
+    assert result["total"] == 3
+
+    # Second page
+    result2 = await list_relationships(limit=2, offset=2)
+    _assert_no_error(result2)
+    assert result2["count"] == 1
+    assert result2["total"] == 3
+
+
+async def test_list_relationships_limit_clamping(setup_server):
+    """list_relationships clamps limit to [1, 500] and offset to >= 0."""
+    result = await list_relationships(limit=0)
+    _assert_no_error(result)
+    assert result["limit"] == 1  # clamped from 0 to 1
+
+    result = await list_relationships(limit=999)
+    _assert_no_error(result)
+    assert result["limit"] == 500  # clamped from 999 to 500
+
+    result = await list_relationships(offset=-5)
+    _assert_no_error(result)
+    assert result["offset"] == 0  # clamped from -5 to 0
+
+
+async def test_list_relationships_entity_and_type_combined(setup_server):
+    """list_relationships with both entity_name and relationship_type filters."""
+    await _add_entity("Alice", "person")
+    await _add_entity("Bob", "person")
+    await _add_entity("ACME", "organization")
+    await add_relationships(
+        relationships=[
+            {"source": "Alice", "target": "Bob", "relationship_type": "knows"},
+            {"source": "Alice", "target": "ACME", "relationship_type": "works_at"},
+        ]
+    )
+
+    result = await list_relationships(entity_name="Alice", relationship_type="works_at")
+    _assert_no_error(result)
+    assert result["total"] == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# update_entity — rename paths
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_update_entity_type_change(setup_server):
+    """update_entity with entity_type reclassifies the entity."""
+    await _add_entity("Alice", "person")
+
+    result = await update_entity(name="Alice", entity_type="scientist")
+    _assert_no_error(result)
+    assert result["result"]["entity_type"] == "scientist"
+
+
+async def test_update_entity_noop(setup_server):
+    """update_entity with no changes returns entity unchanged."""
+    await _add_entity("Alice", "person", description="A scientist")
+
+    result = await update_entity(name="Alice")
+    _assert_no_error(result)
+    assert result["result"]["name"] == "Alice"
+    assert result["result"]["description"] == "A scientist"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# search_nodes — entity_types filter
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_search_nodes_empty_entity_types_treated_as_none(setup_server):
+    """search_nodes with empty entity_types list normalizes to None (no filter)."""
+    await _add_entity("Alice", "person", description="A scientist")
+
+    # Empty list should not crash — should behave like no filter
+    result = await search_nodes(query="Alice", entity_types=[])
+    _assert_no_error(result)
+
+
+async def test_search_nodes_whitespace_entity_types(setup_server):
+    """search_nodes strips whitespace-only entity_types."""
+    await _add_entity("Alice", "person", description="A scientist")
+
+    result = await search_nodes(query="Alice", entity_types=["  ", ""])
+    _assert_no_error(result)
+    # Both entries are whitespace/empty, so after strip+filter → None → no filter
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# compact_observations — edge cases
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_compact_observations_delete_only(setup_server):
+    """compact_observations with empty new_observations just deletes."""
+    await _add_entity("Alice", "person")
+    obs_result = await add_observations(
+        entity_name="Alice",
+        observations=["Fact 1", "Fact 2", "Fact 3"],
+    )
+    _assert_no_error(obs_result)
+
+    entity_data = await get_entity(name="Alice")
+    obs = entity_data["observations"]
+    keep_id = str(obs[0]["id"])
+
+    result = await compact_observations(
+        entity_name="Alice",
+        keep_ids=[keep_id],
+        new_observations=[],  # no new observations
+    )
+    _assert_no_error(result)
+    assert result["deleted"] == 2
+    assert result["added"] == 0
+    assert result["after"] == 1
+
+
+async def test_compact_observations_invalid_keep_ids(setup_server):
+    """compact_observations rejects keep_ids that don't belong to the entity."""
+    await _add_entity("Alice", "person")
+    await add_observations(entity_name="Alice", observations=["Fact 1"])
+
+    result = await compact_observations(
+        entity_name="Alice",
+        keep_ids=["nonexistent-id"],
+        new_observations=["New fact"],
+    )
+    assert "error" in result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# search_observations — scoped to entity
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+async def test_search_observations_scoped_to_entity(setup_server):
+    """search_observations with entity_name resolves entity and scopes search."""
+    await _add_entity("Alice", "person")
+    await add_observations(entity_name="Alice", observations=["Loves quantum physics"])
+
+    # Should not crash — scoped search
+    result = await search_observations(query="quantum", entity_name="Alice")
+    _assert_no_error(result)
+
+
+async def test_search_observations_nonexistent_entity(setup_server):
+    """search_observations with nonexistent entity_name returns error."""
+    result = await search_observations(query="anything", entity_name="Ghost")
+    assert "error" in result
